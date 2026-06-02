@@ -189,7 +189,7 @@ operatorButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const value = button.dataset.op;
     if (value === "power") {
-      togglePowerMode();
+      addOperator("^");
       return;
     }
     addOperator(value);
@@ -493,7 +493,7 @@ function renderExpression() {
   expressionPreview.replaceChildren();
 
   if (game.tokens.length === 0) {
-    if (game.insertIndex === 0) expressionPreview.append(createCursor());
+    expressionPreview.append(createInsertSlot(0));
     const hint = document.createElement("span");
     hint.className = "empty-expression";
     hint.textContent = game.isRevealed ? "주사위와 연산자를 눌러 식을 만드세요." : "카운트다운 후 시작합니다.";
@@ -502,17 +502,20 @@ function renderExpression() {
   }
 
   for (const [index, token] of game.tokens.entries()) {
-    if (game.insertIndex === index) expressionPreview.append(createCursor());
+    expressionPreview.append(createInsertSlot(index));
     expressionPreview.append(token.type === "number" ? createNumberToken(token, index) : createOperatorToken(token, index));
   }
 
-  if (game.insertIndex === game.tokens.length) expressionPreview.append(createCursor());
+  expressionPreview.append(createInsertSlot(game.tokens.length));
 }
 
-function createCursor() {
-  const cursor = document.createElement("span");
-  cursor.className = "insert-cursor";
-  return cursor;
+function createInsertSlot(index) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `insert-slot${getInsertIndex() === index ? " active" : ""}`;
+  button.setAttribute("aria-label", `${index + 1}번째 위치에 입력`);
+  button.addEventListener("click", () => setInsertIndex(index));
+  return button;
 }
 
 function createOperatorToken(token, index) {
@@ -568,7 +571,7 @@ function renderInputState() {
     if (button.dataset.op === "power") {
       button.hidden = selectedDifficulty !== "power";
       button.disabled = disabled || selectedDifficulty !== "power";
-      button.classList.toggle("mode-on", game.powerMode);
+      button.classList.remove("mode-on");
       return;
     }
     button.disabled = disabled;
@@ -589,22 +592,24 @@ function getInsertIndex() {
 function canPlaceNumber() {
   const index = getInsertIndex();
   const previous = game.tokens[index - 1];
-  const next = game.tokens[index];
-  const okAfterPrevious = !previous || previous.type === "operator" && previous.value !== ")";
-  const okBeforeNext = !next || next.type === "operator" && next.value !== "(";
-  return okAfterPrevious && okBeforeNext;
+  return !isNumberLike(previous);
 }
 
 function canPlaceOperator(value) {
-  const index = getInsertIndex();
-  const previous = game.tokens[index - 1];
-  const next = game.tokens[index];
+  if (value === "^" && selectedDifficulty !== "power") return false;
+  return true;
+}
 
-  if (value === "(") return !previous || previous.type === "operator" && previous.value !== ")";
-  if (value === ")") return Boolean(previous) && (previous.type === "number" || previous.value === ")");
+function isNumberLike(token) {
+  return token?.type === "number";
+}
 
-  return Boolean(previous) && (previous.type === "number" || previous.value === ")") &&
-    (!next || next.type === "number" || next.value === "(");
+function isBinaryOperator(value) {
+  return ["+", "-", "*", "/", "^"].includes(value);
+}
+
+function isBinaryOperatorToken(token) {
+  return token?.type === "operator" && isBinaryOperator(token.value);
 }
 
 function insertToken(token) {
@@ -646,12 +651,19 @@ function addDieToExpression(dieId) {
 function addOperator(value) {
   if (!game.isRevealed || game.isSolved) return;
   if (!canPlaceOperator(value)) {
-    setFeedback("이 위치에는 연산자를 넣을 수 없습니다.", "error");
+    setFeedback("지수는 지수 포함 난이도에서 사용할 수 있습니다.", "error");
     return;
   }
 
   game.powerMode = false;
   game.powerBaseId = null;
+
+  if (replaceAdjacentOperator(value)) {
+    setFeedback("연산기호를 바꿨습니다.");
+    renderGame();
+    return;
+  }
+
   insertToken({
     id: createId("token"),
     type: "operator",
@@ -659,6 +671,28 @@ function addOperator(value) {
   });
   setFeedback("식을 계속 이어가세요.");
   renderGame();
+}
+
+function replaceAdjacentOperator(value) {
+  if (!isBinaryOperator(value)) return false;
+
+  const index = getInsertIndex();
+  const previous = game.tokens[index - 1];
+  const next = game.tokens[index];
+
+  if (isBinaryOperatorToken(next)) {
+    next.value = value;
+    game.insertIndex = index + 1;
+    return true;
+  }
+
+  if (isBinaryOperatorToken(previous)) {
+    previous.value = value;
+    game.insertIndex = index;
+    return true;
+  }
+
+  return false;
 }
 
 function togglePowerMode() {
@@ -846,7 +880,7 @@ function validateSyntax() {
 
 function evaluateTokens(tokens) {
   const source = tokens.map((token) => {
-    if (token.type === "operator") return token.value;
+    if (token.type === "operator") return token.value === "^" ? "**" : token.value;
     if (token.power) return `(${token.value}**${token.power.value})`;
     return String(token.value);
   }).join("");
@@ -893,24 +927,63 @@ function playRollReveal() {
   rollStage.replaceChildren();
   rollLayer.hidden = false;
 
+  const stageRect = rollStage.getBoundingClientRect();
+  const dieSize = 50;
+  const wall = 18;
+  const minX = wall;
+  const minY = wall;
+  const maxX = Math.max(minX, stageRect.width - wall - dieSize);
+  const maxY = Math.max(minY, stageRect.height - wall - dieSize);
+  const centerX = (minX + maxX) / 2;
+  const topRowY = minY + (maxY - minY) * 0.17;
+  const trayY = minY + (maxY - minY) * 0.8;
+  const bounded = (x, y) => ({
+    x: clamp(x, minX, maxX),
+    y: clamp(y, minY, maxY),
+  });
+  const randomWithin = (min, max) => {
+    if (max <= min) return Math.round(min);
+    return randomInt(Math.round(min), Math.round(max));
+  };
+
   const rollDice = [
-    { value: game.tens, tone: "black", x: -88, y: -126 },
-    { value: game.ones, tone: "black", x: -28, y: -126 },
+    { value: game.tens, tone: "black", ...bounded(centerX - 32, topRowY) },
+    { value: game.ones, tone: "black", ...bounded(centerX + 24, topRowY) },
     ...game.dice.map((die, index) => ({
       value: die.value,
       tone: "white",
-      x: -140 + index * 70,
-      y: 118,
+      ...bounded(minX + (maxX - minX) * (0.16 + index * 0.17), trayY),
     })),
   ];
 
   rollDice.forEach((die, index) => {
+    const fromLeft = index % 2 === 0;
+    const start = bounded(
+      centerX + randomWithin(-24, 24),
+      minY + randomWithin(6, 34)
+    );
+    const firstBounce = bounded(
+      fromLeft ? minX + randomWithin(0, 20) : maxX - randomWithin(0, 20),
+      randomWithin(minY + 8, maxY - 8)
+    );
+    const secondBounce = bounded(
+      fromLeft ? maxX - randomWithin(0, 22) : minX + randomWithin(0, 22),
+      randomWithin(minY + 8, maxY - 8)
+    );
+
     const item = document.createElement("div");
     item.className = `roll-die ${die.tone}`;
     item.textContent = die.value;
-    item.style.setProperty("--end-x", `${die.x}px`);
-    item.style.setProperty("--end-y", `${die.y}px`);
+    item.style.setProperty("--x0", `${start.x}px`);
+    item.style.setProperty("--y0", `${start.y}px`);
+    item.style.setProperty("--x1", `${firstBounce.x}px`);
+    item.style.setProperty("--y1", `${firstBounce.y}px`);
+    item.style.setProperty("--x2", `${secondBounce.x}px`);
+    item.style.setProperty("--y2", `${secondBounce.y}px`);
+    item.style.setProperty("--x3", `${die.x}px`);
+    item.style.setProperty("--y3", `${die.y}px`);
     item.style.setProperty("--spin", `${randomInt(-420, 420)}deg`);
+    item.style.setProperty("--spin-back", `${randomInt(-260, 260)}deg`);
     item.style.setProperty("--delay", `${index * 45}ms`);
     rollStage.append(item);
   });
@@ -919,6 +992,10 @@ function playRollReveal() {
     clearRoll();
     revealRound();
   }, 1080);
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function revealRound() {
