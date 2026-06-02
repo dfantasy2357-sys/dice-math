@@ -1,0 +1,19 @@
+{
+  "name": "주사위 연산",
+  "short_name": "주사위 연산",
+  "description": "주사위를 이용해 암산 식을 만드는 학습 게임",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#121723",
+  "theme_color": "#121723",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
