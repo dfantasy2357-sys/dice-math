@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121723">
+  <title>주사위 연산 앱 모드</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-frame theme-basic" id="appFrame">
+    <section class="splash" id="splash" aria-label="로딩 화면">
+      <div class="splash-table">
+        <div class="splash-die die-a">10</div>
+        <div class="splash-die die-b">4</div>
+        <div class="splash-die die-c">6</div>
+        <div class="splash-die die-d">2</div>
+        <div class="splash-die die-e">5</div>
+      </div>
+      <div class="brand-lockup">
+        <p>mental arithmetic dice game</p>
+        <h1>주사위 연산</h1>
+      </div>
+    </section>
+
+    <section class="home screen active" id="home" aria-label="첫 화면">
+      <header class="home-header">
+        <div>
+          <p class="eyebrow">오늘의 연습</p>
+          <h1>주사위 연산</h1>
+        </div>
+        <button class="icon-button" type="button" aria-label="설정">⚙</button>
+      </header>
+
+      <section class="hero-board" aria-label="주사위판 미리보기">
+        <div class="board-rail">
+          <div class="board-felt">
+            <div class="skin-doodles" aria-hidden="true">
+              <span class="chalk chalk-a">7+8=15</span>
+              <span class="chalk chalk-b">x ÷ + −</span>
+              <span class="chalk chalk-c">떠든 사람</span>
+              <span class="box-doodle box-a">연산왕</span>
+              <span class="box-doodle box-b">★ ★</span>
+              <span class="box-doodle box-c">주사위 출동!</span>
+              <span class="star-doodle star-a">반짝</span>
+              <span class="star-doodle star-b">✦</span>
+              <span class="star-doodle star-c">45</span>
+              <span class="robot-doodle robot-a">0101</span>
+              <span class="robot-doodle robot-b">계산중</span>
+              <span class="robot-doodle robot-c">⟡</span>
+              <span class="dino-doodle dino-a">화석</span>
+              <span class="dino-doodle dino-b">발자국</span>
+              <span class="dino-doodle dino-c">100</span>
+            </div>
+            <div class="table-die black">40</div>
+            <div class="table-die black small">5</div>
+            <div class="table-die white die-one">6</div>
+            <div class="table-die white die-two">3</div>
+            <div class="table-die white die-three">2</div>
+            <div class="table-die white die-four">5</div>
+            <div class="table-die white die-five">1</div>
+          </div>
+        </div>
+        <div class="target-chip">목표 45</div>
+      </section>
+
+      <section class="profile-card" aria-label="플레이어 설정">
+        <div class="profile-copy">
+          <span>첫 설정</span>
+          <strong id="nicknamePreview">닉네임을 정해주세요</strong>
+        </div>
+        <label class="nickname-field">
+          <span>닉네임</span>
+          <input id="nicknameInput" maxlength="10" placeholder="예: 연산왕" autocomplete="off">
+        </label>
+      </section>
+
+      <section class="mode-grid" aria-label="시작 메뉴">
+        <button class="primary-action" id="soloButton" type="button">
+          <strong>혼자하기</strong>
+        </button>
+        <button class="locked-action" type="button">
+          <span id="unlockText">정답 37 / 100</span>
+          <strong>온라인 대전</strong>
+          <div class="unlock-bar" aria-label="온라인 대전 해금 진행도">
+            <span id="unlockFill"></span>
+          </div>
+        </button>
+      </section>
+
+      <section class="skin-strip" aria-label="스킨 컬렉션">
+        <div class="section-title">
+          <h2>스킨</h2>
+          <button class="quiet-button" id="skinCollectionButton" type="button">전체 보기</button>
+        </div>
+        <button class="current-skin-card" id="currentSkinButton" type="button">
+          <span class="swatch basic" id="currentSkinSwatch"></span>
+          <span>
+            <small>현재 적용</small>
+            <strong id="currentSkinName">기본</strong>
+          </span>
+        </button>
+        <div class="reward-status">
+          <strong id="nextRewardProgress">37 / 100</strong>
+          <span id="nextRewardText">다음 스킨까지 63개</span>
+        </div>
+        <button class="reward-claim-button" id="skinRewardButton" type="button" hidden>새 스킨 받기</button>
+      </section>
+    </section>
+
+    <section class="skin-sheet" id="skinSheet" aria-label="스킨 선택" hidden>
+      <div class="sheet-backdrop" id="skinSheetBackdrop"></div>
+      <div class="skin-sheet-panel">
+        <div class="sheet-handle"></div>
+        <header class="sheet-header">
+          <div>
+            <span>스킨 컬렉션</span>
+            <h2>스킨 선택</h2>
+          </div>
+          <button class="sheet-close" id="skinSheetClose" type="button" aria-label="닫기">×</button>
+        </header>
+        <div class="skin-sheet-summary">
+          <strong id="skinSheetProgress">37 / 100</strong>
+          <span id="skinSheetNextReward">다음 스킨까지 63개</span>
+        </div>
+        <div class="skin-options" id="skinOptions">
+          <button class="skin-option active" type="button" data-skin="basic" data-unlock="0">
+            <span class="swatch basic"></span>
+            <strong>기본</strong>
+            <small>처음부터</small>
+          </button>
+          <button class="skin-option" type="button" data-skin="classroom" data-unlock="0">
+            <span class="swatch classroom"></span>
+            <strong>칠판</strong>
+            <small>처음부터</small>
+          </button>
+          <button class="skin-option" type="button" data-skin="box" data-unlock="0">
+            <span class="swatch box"></span>
+            <strong>종이박스</strong>
+            <small>처음부터</small>
+          </button>
+          <button class="skin-option locked" type="button" data-skin="star" data-unlock="100">
+            <span class="swatch star"></span>
+            <strong>별빛 연산실</strong>
+            <small>100개 보상</small>
+          </button>
+          <button class="skin-option locked" type="button" data-skin="robot" data-unlock="200">
+            <span class="swatch robot"></span>
+            <strong>로봇 실험실</strong>
+            <small>200개 보상</small>
+          </button>
+          <button class="skin-option locked" type="button" data-skin="dino" data-unlock="300">
+            <span class="swatch dino"></span>
+            <strong>공룡 연구소</strong>
+            <small>300개 보상</small>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="game-screen screen" id="gameScreen" aria-label="게임 화면">
+      <header class="game-header">
+        <button class="back-button" id="gameBackButton" type="button">홈</button>
+        <div class="game-title">
+          <span id="gameDifficultyLabel">사칙연산</span>
+          <strong id="gameTimer">00.00</strong>
+        </div>
+        <button class="icon-button" type="button" aria-label="설정">⚙</button>
+      </header>
+
+      <section class="game-board" aria-label="게임판">
+        <div class="board-rail">
+          <div class="board-felt game-felt">
+            <div class="skin-doodles" aria-hidden="true">
+              <span class="chalk chalk-a">7+8=15</span>
+              <span class="chalk chalk-b">x ÷ + −</span>
+              <span class="chalk chalk-c">떠든 사람</span>
+              <span class="box-doodle box-a">연산왕</span>
+              <span class="box-doodle box-b">★ ★</span>
+              <span class="box-doodle box-c">주사위 출동!</span>
+              <span class="star-doodle star-a">반짝</span>
+              <span class="star-doodle star-b">✦</span>
+              <span class="star-doodle star-c">45</span>
+              <span class="robot-doodle robot-a">0101</span>
+              <span class="robot-doodle robot-b">계산중</span>
+              <span class="robot-doodle robot-c">⟡</span>
+              <span class="dino-doodle dino-a">화석</span>
+              <span class="dino-doodle dino-b">발자국</span>
+              <span class="dino-doodle dino-c">100</span>
+            </div>
+            <div class="game-target">
+              <div class="target-dice">
+                <span class="game-die black" id="tensDie">?</span>
+                <span>+</span>
+                <span class="game-die black" id="onesDie">?</span>
+              </div>
+              <strong id="targetLabel">목표 ?</strong>
+            </div>
+            <div class="game-status-line" id="recordLine">문제가 곧 공개됩니다.</div>
+            <div class="expression-preview" id="expressionPreview" aria-label="입력한 식">
+              <span class="empty-expression">카운트다운 후 시작합니다.</span>
+            </div>
+            <section class="game-dice-row" id="diceTray" aria-label="흰 주사위">
+            </section>
+            <div class="game-feedback" id="gameFeedback">흰 주사위 5개를 모두 한 번씩 사용하세요.</div>
+            <div class="countdown-layer" id="countdownLayer" hidden>
+              <strong id="countdownNumber">3</strong>
+            </div>
+            <div class="roll-layer" id="rollLayer" hidden>
+              <div class="roll-stage" id="rollStage" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="operator-bar" aria-label="연산자">
+        <button type="button" data-op="+">+</button>
+        <button type="button" data-op="-">−</button>
+        <button type="button" data-op="*">×</button>
+        <button type="button" data-op="/">÷</button>
+        <button type="button" data-op="(">(</button>
+        <button type="button" data-op=")">)</button>
+        <button class="power-op" id="gamePowerOp" type="button" data-op="power">^</button>
+        <button id="undoButton" type="button">↶</button>
+      </section>
+
+      <div class="game-action-row">
+        <button class="clear-expression-button" id="clearExpressionButton" type="button">전체 지우기</button>
+        <button class="answer-check-button" id="answerCheckButton" type="button">정답 확인</button>
+      </div>
+    </section>
+
+    <section class="solo-sheet" id="soloSheet" aria-label="혼자하기 난이도 선택" hidden>
+      <div class="sheet-backdrop" id="sheetBackdrop"></div>
+      <div class="sheet-panel">
+        <div class="sheet-handle"></div>
+        <header class="sheet-header">
+          <div>
+            <span>혼자하기</span>
+            <h2>난이도 선택</h2>
+          </div>
+          <button class="sheet-close" id="sheetClose" type="button" aria-label="닫기">×</button>
+        </header>
+        <div class="clear-count">
+          <span>클리어</span>
+          <strong id="soloClearCount">37개</strong>
+        </div>
+        <div class="difficulty-cards">
+          <button class="difficulty-card active" type="button" data-difficulty="basic">
+            <span>기본</span>
+            <strong>사칙연산</strong>
+          </button>
+          <button class="difficulty-card" type="button" data-difficulty="power">
+            <span>도전</span>
+            <strong>지수 포함</strong>
+          </button>
+        </div>
+        <button class="sheet-start" id="sheetStart" type="button">시작하기</button>
+      </div>
+    </section>
+
+    <section class="success-result" id="successResult" aria-label="정답 결과" hidden>
+      <div class="result-card">
+        <span class="result-kicker">정답!</span>
+        <strong class="result-time" id="resultTime">12.48초</strong>
+        <div class="result-stats">
+          <div>
+            <span>누적 클리어</span>
+            <strong id="resultClearCount">38개</strong>
+          </div>
+          <div>
+            <span>다음 보상</span>
+            <strong id="resultNextReward">38 / 100</strong>
+          </div>
+        </div>
+        <p id="resultMessage">다음 스킨까지 62개 남았어요.</p>
+        <button class="result-reward-button" id="resultRewardButton" type="button" hidden>스킨 받기</button>
+        <div class="result-actions">
+          <button class="result-next" id="resultNextButton" type="button">다음 문제</button>
+          <button class="result-home" id="resultHomeButton" type="button">홈</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="reward-reveal" id="rewardReveal" aria-label="스킨 획득" hidden>
+      <div class="reward-card">
+        <span class="reward-kicker" id="rewardKicker">100개 달성!</span>
+        <div class="reward-shell" id="rewardShell">
+          <span class="reward-crack crack-a"></span>
+          <span class="reward-crack crack-b"></span>
+          <span class="reward-crack crack-c"></span>
+          <span class="reward-swatch" id="rewardSwatch"></span>
+        </div>
+        <h2 id="rewardTitle">새 스킨 획득!</h2>
+        <p id="rewardCopy">별빛 연산실을 받았어요.</p>
+        <div class="reward-actions">
+          <button class="reward-apply" id="rewardApply" type="button">지금 적용</button>
+          <button class="reward-later" id="rewardLater" type="button">나중에</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
