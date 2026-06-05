@@ -896,13 +896,17 @@ button {
 }
 
 .leave-room-button {
-  min-width: 64px;
+  width: 72px;
   height: 40px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.14);
   color: #fff;
   font-size: 13px;
   font-weight: 950;
+}
+
+.online-screen .game-header {
+  grid-template-columns: 54px minmax(0, 1fr) 72px;
 }
 
 .online-screen.phase-playing .battle-lobby {
@@ -1181,11 +1185,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  max-width: 100%;
 }
 
 .battle-target-dice {
   gap: 8px;
   font-weight: 950;
+  flex-wrap: wrap;
 }
 
 .battle-target-dice strong {
@@ -1201,6 +1207,7 @@ button {
 
 .battle-white-dice {
   gap: 7px;
+  flex-wrap: wrap;
 }
 
 .battle-white-dice span {
@@ -1226,6 +1233,7 @@ button {
   justify-content: center;
   gap: 4px;
   background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
 }
 
 .battle-expression-mock span {
@@ -1673,6 +1681,16 @@ button {
   z-index: 20;
 }
 
+.join-code-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 21;
+}
+
+.join-code-sheet[hidden] {
+  display: none;
+}
+
 .sheet-backdrop {
   position: absolute;
   inset: 0;
@@ -1793,6 +1811,41 @@ button {
   color: #fff;
   font-size: 18px;
   font-weight: 900;
+}
+
+.join-code-field {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.join-code-field span,
+.join-code-help {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.join-code-field input {
+  width: 100%;
+  height: 58px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--ink);
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.join-code-field input:focus {
+  border-color: var(--accent);
+}
+
+.join-code-help {
+  margin: 8px 0 0;
 }
 
 .game-screen {
@@ -2615,7 +2668,42 @@ button {
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 430px) {
+  .online-screen {
+    padding-inline: 12px;
+  }
+
+  .online-screen .game-header {
+    grid-template-columns: 46px minmax(0, 1fr) 68px;
+    gap: 7px;
+  }
+
+  .online-screen .game-title strong {
+    font-size: 25px;
+  }
+
+  .online-screen .game-title span {
+    font-size: 11px;
+  }
+
+  .online-screen .back-button {
+    height: 40px;
+  }
+
+  .leave-room-button {
+    width: 68px;
+    height: 40px;
+    font-size: 12px;
+  }
+
+  .battle-round-panel {
+    padding: 8px;
+  }
+
+  .battle-time-row {
+    padding: 7px 8px;
+  }
+
   .battle-play-layout {
     grid-template-columns: 1fr;
   }
@@ -2640,6 +2728,47 @@ button {
   .party-avatar {
     width: 28px;
     height: 28px;
+  }
+
+  .battle-problem-card {
+    padding: 8px;
+  }
+
+  .battle-target-dice {
+    gap: 6px;
+  }
+
+  .battle-target-dice .game-die.black {
+    width: 42px;
+    height: 42px;
+    font-size: 23px;
+  }
+
+  .battle-target-dice strong {
+    min-width: 76px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .battle-white-dice {
+    gap: 6px;
+  }
+
+  .battle-white-dice span {
+    width: 38px;
+    height: 38px;
+    font-size: 19px;
+  }
+
+  .battle-expression-mock {
+    padding: 7px;
+    gap: 3px;
+  }
+
+  .battle-expression-mock span {
+    min-width: 30px;
+    height: 34px;
+    font-size: 19px;
   }
 
   .board-felt {

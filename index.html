@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260604-party-panel">
+  <link rel="stylesheet" href="styles.css?v=20260605-mobile-join">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -236,6 +236,26 @@
       </section>
     </section>
 
+    <section class="join-code-sheet" id="joinCodeSheet" aria-label="방 코드 입력" hidden>
+      <div class="sheet-backdrop" id="joinCodeBackdrop"></div>
+      <div class="sheet-panel">
+        <div class="sheet-handle"></div>
+        <header class="sheet-header">
+          <div>
+            <span>코드 참가</span>
+            <h2>방 코드 입력</h2>
+          </div>
+          <button class="sheet-close" id="joinCodeClose" type="button" aria-label="닫기">×</button>
+        </header>
+        <label class="join-code-field">
+          <span>6자리 코드</span>
+          <input id="joinCodeInput" maxlength="6" placeholder="A7K2Q9" autocomplete="off" inputmode="text">
+        </label>
+        <p class="join-code-help">영문과 숫자를 입력하세요. O, I, 0, 1은 사용하지 않습니다.</p>
+        <button class="sheet-start" id="joinCodeSubmit" type="button">방 참가</button>
+      </div>
+    </section>
+
     <section class="skin-sheet" id="skinSheet" aria-label="스킨 선택" hidden>
       <div class="sheet-backdrop" id="skinSheetBackdrop"></div>
       <div class="skin-sheet-panel">
@@ -429,6 +449,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=20260604-party-panel"></script>
+  <script src="app.js?v=20260605-mobile-join"></script>
 </body>
 </html>

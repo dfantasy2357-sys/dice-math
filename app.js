@@ -17,6 +17,11 @@ const onlineProgressCount = document.querySelector("#onlineProgressCount");
 const onlineProgressFill = document.querySelector("#onlineProgressFill");
 const createRoomButton = document.querySelector("#createRoomButton");
 const joinRoomButton = document.querySelector("#joinRoomButton");
+const joinCodeSheet = document.querySelector("#joinCodeSheet");
+const joinCodeBackdrop = document.querySelector("#joinCodeBackdrop");
+const joinCodeClose = document.querySelector("#joinCodeClose");
+const joinCodeInput = document.querySelector("#joinCodeInput");
+const joinCodeSubmit = document.querySelector("#joinCodeSubmit");
 const matchSizeButtons = document.querySelectorAll("[data-match-size]");
 const friendInviteButton = document.querySelector("#friendInviteButton");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
@@ -205,7 +210,13 @@ onlineButton.addEventListener("click", openOnlineScreen);
 onlineBackButton.addEventListener("click", openHome);
 leaveRoomButton.addEventListener("click", openOnlineScreen);
 createRoomButton.addEventListener("click", () => openBattleLobby("비공개 친구 방", 4));
-joinRoomButton.addEventListener("click", () => openBattleLobby("코드 참가 방", 4));
+joinRoomButton.addEventListener("click", openJoinCodeSheet);
+joinCodeBackdrop.addEventListener("click", closeJoinCodeSheet);
+joinCodeClose.addEventListener("click", closeJoinCodeSheet);
+joinCodeSubmit.addEventListener("click", joinRoomWithCode);
+joinCodeInput.addEventListener("input", () => {
+  joinCodeInput.value = joinCodeInput.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, "");
+});
 matchSizeButtons.forEach((button) => {
   button.addEventListener("click", () => openBattleLobby(`${button.dataset.matchSize}인 자동매칭`, Number(button.dataset.matchSize)));
 });
@@ -393,8 +404,29 @@ function closeSoloSheet() {
   soloSheet.hidden = true;
 }
 
+function openJoinCodeSheet() {
+  joinCodeInput.value = "";
+  joinCodeSheet.hidden = false;
+  window.setTimeout(() => joinCodeInput.focus(), 40);
+}
+
+function closeJoinCodeSheet() {
+  joinCodeSheet.hidden = true;
+}
+
+function joinRoomWithCode() {
+  const code = joinCodeInput.value.trim().toUpperCase();
+  if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+    joinCodeInput.focus();
+    return;
+  }
+  closeJoinCodeSheet();
+  openBattleLobby("코드 참가 방", 4, code);
+}
+
 function openOnlineScreen() {
   closeSoloSheet();
+  closeJoinCodeSheet();
   closeSuccessResult();
   stopTimer();
   clearCountdown();
@@ -407,14 +439,14 @@ function openOnlineScreen() {
   setOnlinePhase("menu");
 }
 
-function openBattleLobby(mode, playerCount = 4) {
+function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode()) {
   clearBattleTimers();
   battleState.roomMode = mode;
   battleState.playerCount = playerCount;
   battleState.round = 0;
   battleState.players = createMockPlayers(playerCount);
   battleState.phase = "lobby";
-  roomCodeLabel.textContent = createRoomCode();
+  roomCodeLabel.textContent = roomCode;
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
   onlinePlayerName.textContent = battleState.players[0].name;
   battleRoundPanel.hidden = true;
