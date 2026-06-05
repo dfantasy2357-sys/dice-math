@@ -7,6 +7,27 @@ const nicknamePreview = document.querySelector("#nicknamePreview");
 const skinButtons = document.querySelectorAll("[data-skin]");
 const previewDice = document.querySelectorAll(".splash-die, .table-die");
 const soloButton = document.querySelector("#soloButton");
+const onlineButton = document.querySelector("#onlineButton");
+const onlineScreen = document.querySelector("#onlineScreen");
+const onlineBackButton = document.querySelector("#onlineBackButton");
+const leaveRoomButton = document.querySelector("#leaveRoomButton");
+const onlineStateLabel = document.querySelector("#onlineStateLabel");
+const onlineStateCopy = document.querySelector("#onlineStateCopy");
+const onlineProgressCount = document.querySelector("#onlineProgressCount");
+const onlineProgressFill = document.querySelector("#onlineProgressFill");
+const createRoomButton = document.querySelector("#createRoomButton");
+const joinRoomButton = document.querySelector("#joinRoomButton");
+const matchSizeButtons = document.querySelectorAll("[data-match-size]");
+const friendInviteButton = document.querySelector("#friendInviteButton");
+const roomCodeLabel = document.querySelector("#roomCodeLabel");
+const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
+const onlinePlayerName = document.querySelector("#onlinePlayerName");
+const scoreBoard = document.querySelector("#scoreBoard");
+const onlineReadyButton = document.querySelector("#onlineReadyButton");
+const battleRoundPanel = document.querySelector("#battleRoundPanel");
+const battleElapsed = document.querySelector("#battleElapsed");
+const battleStatusList = document.querySelector("#battleStatusList");
+const battleResultList = document.querySelector("#battleResultList");
 const soloSheet = document.querySelector("#soloSheet");
 const sheetBackdrop = document.querySelector("#sheetBackdrop");
 const sheetClose = document.querySelector("#sheetClose");
@@ -109,6 +130,20 @@ let selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let pendingRewardSkin = null;
 let nextId = 0;
+const usedMockRoomCodes = new Set(["A7K2Q9"]);
+const battleState = {
+  roomMode: "비공개 친구 방",
+  playerCount: 4,
+  round: 0,
+  players: [],
+  phase: "lobby",
+  roundStartedAt: null,
+  roundTimerId: null,
+  roundEndTimerId: null,
+  autoStartTimerId: null,
+  autoStartIntervalId: null,
+  statusTimerIds: [],
+};
 
 setTimeout(() => {
   splash.classList.add("done");
@@ -166,6 +201,16 @@ difficultyCards.forEach((button) => {
 });
 
 soloButton.addEventListener("click", openSoloSheet);
+onlineButton.addEventListener("click", openOnlineScreen);
+onlineBackButton.addEventListener("click", openHome);
+leaveRoomButton.addEventListener("click", openOnlineScreen);
+createRoomButton.addEventListener("click", () => openBattleLobby("비공개 친구 방", 4));
+joinRoomButton.addEventListener("click", () => openBattleLobby("코드 참가 방", 4));
+matchSizeButtons.forEach((button) => {
+  button.addEventListener("click", () => openBattleLobby(`${button.dataset.matchSize}인 자동매칭`, Number(button.dataset.matchSize)));
+});
+friendInviteButton.addEventListener("click", () => openBattleLobby("친구 초대 방", 4));
+onlineReadyButton.addEventListener("click", startMockBattleRound);
 sheetBackdrop.addEventListener("click", closeSoloSheet);
 sheetClose.addEventListener("click", closeSoloSheet);
 sheetStart.addEventListener("click", openGameScreen);
@@ -245,6 +290,7 @@ function renderProgress() {
       ? "온라인 대전 해금 완료"
       : `정답 ${progress.clears} / ${progress.onlineGoal}`;
   unlockFill.style.width = `${Math.round(onlineRatio * 100)}%`;
+  renderOnlineProgress(onlineRatio);
   nextRewardProgress.textContent = `${progress.clears} / ${rewardStatus.nextGoal}`;
   skinSheetProgress.textContent = `${progress.clears} / ${rewardStatus.nextGoal}`;
   nextRewardText.textContent = rewardStatus.shortMessage;
@@ -260,6 +306,19 @@ function renderProgress() {
   });
 
   skinRewardButton.hidden = !pendingRewardSkin;
+}
+
+function renderOnlineProgress(onlineRatio = Math.min(progress.clears / progress.onlineGoal, 1)) {
+  const isUnlocked = progress.clears >= progress.onlineGoal;
+  onlineProgressCount.textContent = isUnlocked
+    ? `${progress.clears}개 클리어`
+    : `${progress.clears} / ${progress.onlineGoal}`;
+  onlineProgressFill.style.width = `${Math.round(onlineRatio * 100)}%`;
+  onlineStateLabel.textContent = isUnlocked ? "온라인 대전 입장 가능" : "100개 달성 후 해금";
+  onlineStateCopy.textContent = isUnlocked
+    ? "친구와 방을 만들거나 자동 매칭으로 같은 문제를 동시에 풀 수 있어요."
+    : `혼자하기 ${progress.onlineGoal - progress.clears}개를 더 클리어하면 정식 온라인 대전이 열려요. 지금은 화면 흐름을 미리 볼 수 있어요.`;
+  onlineButton.classList.toggle("unlocked", isUnlocked);
 }
 
 function getNextRewardStatus() {
@@ -334,10 +393,257 @@ function closeSoloSheet() {
   soloSheet.hidden = true;
 }
 
+function openOnlineScreen() {
+  closeSoloSheet();
+  closeSuccessResult();
+  stopTimer();
+  clearCountdown();
+  clearRoll();
+  renderOnlineProgress();
+  resetMockBattle();
+  home.classList.remove("active");
+  gameScreen.classList.remove("active");
+  onlineScreen.classList.add("active");
+  setOnlinePhase("menu");
+}
+
+function openBattleLobby(mode, playerCount = 4) {
+  clearBattleTimers();
+  battleState.roomMode = mode;
+  battleState.playerCount = playerCount;
+  battleState.round = 0;
+  battleState.players = createMockPlayers(playerCount);
+  battleState.phase = "lobby";
+  roomCodeLabel.textContent = createRoomCode();
+  lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
+  onlinePlayerName.textContent = battleState.players[0].name;
+  battleRoundPanel.hidden = true;
+  battleResultList.hidden = true;
+  battleResultList.replaceChildren();
+  onlineReadyButton.disabled = false;
+  onlineReadyButton.textContent = "모두 준비 완료 미리보기";
+  renderScoreBoard();
+  setOnlinePhase("lobby");
+}
+
+function resetMockBattle() {
+  clearBattleTimers();
+  battleState.roomMode = "비공개 친구 방";
+  battleState.playerCount = 4;
+  battleState.round = 0;
+  battleState.players = createMockPlayers(4);
+  battleState.phase = "lobby";
+  lobbyModeLabel.textContent = "비공개 대기방";
+  roomCodeLabel.textContent = "A7K2Q9";
+  onlinePlayerName.textContent = battleState.players[0].name;
+  battleRoundPanel.hidden = true;
+  battleResultList.hidden = true;
+  battleResultList.replaceChildren();
+  onlineReadyButton.disabled = false;
+  onlineReadyButton.textContent = "모두 준비 완료 미리보기";
+  renderScoreBoard();
+}
+
+function setOnlinePhase(phase) {
+  battleState.phase = phase;
+  onlineScreen.classList.remove("phase-menu", "phase-lobby", "phase-playing", "phase-result");
+  onlineScreen.classList.add(`phase-${phase}`);
+}
+
+function createMockPlayers(playerCount) {
+  const names = [
+    nicknameInput.value.trim() || "나의 닉네임",
+    "번개 계산왕",
+    "칠판 마스터",
+    "주사위 박사",
+  ];
+  return names.slice(0, playerCount).map((name, index) => ({
+    id: `player-${index + 1}`,
+    name,
+    score: 0,
+  }));
+}
+
+function createRoomCode() {
+  const codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  do {
+    code = Array.from({ length: 6 }, () => codeChars[randomInt(0, codeChars.length - 1)]).join("");
+  } while (usedMockRoomCodes.has(code));
+  usedMockRoomCodes.add(code);
+  return code;
+}
+
+function clearBattleTimers() {
+  if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
+  if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
+  if (battleState.autoStartTimerId) clearTimeout(battleState.autoStartTimerId);
+  if (battleState.autoStartIntervalId) clearInterval(battleState.autoStartIntervalId);
+  battleState.statusTimerIds.forEach((timerId) => clearTimeout(timerId));
+  battleState.roundTimerId = null;
+  battleState.roundEndTimerId = null;
+  battleState.autoStartTimerId = null;
+  battleState.autoStartIntervalId = null;
+  battleState.statusTimerIds = [];
+  battleState.roundStartedAt = null;
+}
+
+function startMockBattleRound() {
+  if (!battleState.players.length) resetMockBattle();
+  clearBattleTimers();
+  setOnlinePhase("playing");
+  battleState.roundStartedAt = performance.now();
+  battleRoundPanel.hidden = false;
+  battleResultList.hidden = true;
+  battleResultList.replaceChildren();
+  onlineReadyButton.disabled = true;
+  onlineReadyButton.textContent = "라운드 진행 중";
+  lobbyModeLabel.textContent = `${battleState.roomMode} · ${battleState.round + 1}라운드`;
+  battleElapsed.textContent = "00.00";
+  renderBattleStatuses({});
+
+  battleState.roundTimerId = window.setInterval(() => {
+    battleElapsed.textContent = formatTime(performance.now() - battleState.roundStartedAt);
+  }, 47);
+
+  battleState.statusTimerIds = [
+    window.setTimeout(() => renderBattleStatuses({ [battleState.players[0].id]: "입력중" }), 650),
+    window.setTimeout(() => renderBattleStatuses({ [battleState.players[0].id]: "완료" }), 1050),
+    window.setTimeout(() => {
+      const statusMap = {};
+      battleState.players.slice(0, Math.max(1, battleState.playerCount - 2)).forEach((player) => {
+        statusMap[player.id] = "완료";
+      });
+      renderBattleStatuses(statusMap);
+    }, 1600),
+  ];
+  battleState.roundEndTimerId = window.setTimeout(showMockBattleResult, 2600);
+}
+
+function renderBattleStatuses(statusMap = {}) {
+  battleStatusList.replaceChildren(
+    ...battleState.players.map((player, index) => {
+      const status = statusMap[player.id] || "풀이중";
+      const row = document.createElement("div");
+      const avatar = document.createElement("span");
+      const name = document.createElement("strong");
+      const state = document.createElement("span");
+      avatar.className = "party-avatar";
+      avatar.textContent = index === 0 ? "나" : String(index + 1);
+      name.textContent = player.name;
+      state.textContent = status;
+      row.className = "party-member";
+      row.dataset.status = status;
+      row.append(avatar, name, state);
+      return row;
+    })
+  );
+}
+
+function showMockBattleResult() {
+  clearBattleTimers();
+  if (!battleState.players.length) resetMockBattle();
+  setOnlinePhase("result");
+  battleState.round += 1;
+  const roundResults = createMockRoundResults();
+
+  roundResults.forEach((result) => {
+    const player = battleState.players.find((item) => item.id === result.id);
+    if (player) player.score += result.points;
+  });
+
+  battleRoundPanel.hidden = true;
+  battleResultList.replaceChildren(
+    ...roundResults.map((result) => {
+      const row = document.createElement("li");
+      const rank = document.createElement("span");
+      const name = document.createElement("strong");
+      const time = document.createElement("em");
+      const expression = document.createElement("small");
+      rank.textContent = result.rankLabel;
+      name.textContent = result.name;
+      time.textContent = result.timedOut ? "시간초과" : `${result.time}초`;
+      expression.textContent = result.timedOut
+        ? `120초 초과 · +${result.points}점`
+        : `${result.expression} · +${result.points}점`;
+      row.classList.toggle("timeout", result.timedOut);
+      row.append(rank, name, time, expression);
+      return row;
+    })
+  );
+  battleResultList.hidden = false;
+  onlineReadyButton.disabled = true;
+  startAutoNextRoundCountdown();
+  renderScoreBoard();
+}
+
+function startAutoNextRoundCountdown() {
+  let remaining = 5;
+  onlineReadyButton.textContent = `${remaining}초 후 다음 문제 자동시작`;
+  battleState.autoStartIntervalId = window.setInterval(() => {
+    remaining -= 1;
+    if (remaining > 0) {
+      onlineReadyButton.textContent = `${remaining}초 후 다음 문제 자동시작`;
+    }
+  }, 1000);
+  battleState.autoStartTimerId = window.setTimeout(() => {
+    if (battleState.autoStartIntervalId) clearInterval(battleState.autoStartIntervalId);
+    battleState.autoStartIntervalId = null;
+    onlineReadyButton.disabled = false;
+    startMockBattleRound();
+  }, 5000);
+}
+
+function createMockRoundResults() {
+  const solvedCount = battleState.playerCount === 2 ? 1 : Math.min(2, battleState.playerCount);
+  const solvedPlayers = battleState.players.slice(0, solvedCount);
+  const timeoutPlayers = battleState.players.slice(solvedCount);
+  const expressions = ["6×(5+2)-4", "(4+5)×3-2", "5×5-6+4", "2^(4-2)+6"];
+  const times = ["08.42", "19.18", "31.07", "44.63"];
+
+  return [
+    ...solvedPlayers.map((player, index) => ({
+      ...player,
+      rankLabel: String(index + 1),
+      points: (battleState.playerCount - index) * 10,
+      time: times[index],
+      expression: expressions[index],
+      timedOut: false,
+    })),
+    ...timeoutPlayers.map((player) => ({
+      ...player,
+      rankLabel: "초과",
+      points: 5,
+      time: "120.00",
+      expression: "",
+      timedOut: true,
+    })),
+  ];
+}
+
+function renderScoreBoard() {
+  const sortedPlayers = [...battleState.players].sort((a, b) => b.score - a.score);
+  scoreBoard.replaceChildren(
+    ...sortedPlayers.map((player, index) => {
+      const row = document.createElement("div");
+      const rank = document.createElement("span");
+      const name = document.createElement("strong");
+      const score = document.createElement("em");
+      rank.textContent = `${index + 1}위`;
+      name.textContent = player.name;
+      score.textContent = `${player.score}점`;
+      row.append(rank, name, score);
+      return row;
+    })
+  );
+}
+
 function openGameScreen() {
   closeSoloSheet();
   closeSuccessResult();
+  clearBattleTimers();
   home.classList.remove("active");
+  onlineScreen.classList.remove("active");
   gameScreen.classList.add("active");
   startRound();
 }
@@ -347,7 +653,9 @@ function openHome() {
   stopTimer();
   clearCountdown();
   clearRoll();
+  clearBattleTimers();
   gameScreen.classList.remove("active");
+  onlineScreen.classList.remove("active");
   home.classList.add("active");
   renderProgress();
 }
