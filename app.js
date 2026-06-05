@@ -27,6 +27,7 @@ const friendInviteButton = document.querySelector("#friendInviteButton");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
 const onlinePlayerName = document.querySelector("#onlinePlayerName");
+const battleRuleNote = document.querySelector("#battleRuleNote");
 const scoreBoard = document.querySelector("#scoreBoard");
 const onlineReadyButton = document.querySelector("#onlineReadyButton");
 const battleRoundPanel = document.querySelector("#battleRoundPanel");
@@ -483,6 +484,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode()) {
   battleState.currentProblem = null;
   roomCodeLabel.textContent = roomCode;
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
+  battleRuleNote.textContent = getBattleRuleNote(mode);
   onlinePlayerName.textContent = battleState.players[0].name;
   battleRoundPanel.hidden = true;
   battleResultSummary.hidden = true;
@@ -506,6 +508,7 @@ function resetMockBattle() {
   battleState.submissions = [];
   battleState.currentProblem = null;
   lobbyModeLabel.textContent = "비공개 대기방";
+  battleRuleNote.textContent = getBattleRuleNote(battleState.roomMode);
   roomCodeLabel.textContent = "A7K2Q9";
   onlinePlayerName.textContent = battleState.players[0].name;
   battleRoundPanel.hidden = true;
@@ -522,6 +525,14 @@ function setOnlinePhase(phase) {
   battleState.phase = phase;
   onlineScreen.classList.remove("phase-menu", "phase-lobby", "phase-playing", "phase-result");
   onlineScreen.classList.add(`phase-${phase}`);
+}
+
+function getBattleRuleNote(mode) {
+  if (mode.includes("자동매칭")) {
+    return "방장 없음 · 중간 참가 없음 · 결과 후 5초 자동 시작 · 나가면 즉시 제외";
+  }
+
+  return "방장 있음 · 진행 중 참가는 다음 라운드부터 · 결과 후 5초 자동 시작";
 }
 
 function createMockPlayers(playerCount) {
