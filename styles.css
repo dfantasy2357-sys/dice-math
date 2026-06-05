@@ -886,7 +886,9 @@ button {
 .online-screen.phase-playing .player-list,
 .online-screen.phase-playing .score-board,
 .online-screen.phase-playing .ready-button,
+.online-screen.phase-playing .battle-result-summary,
 .online-screen.phase-playing .battle-result-list,
+.online-screen.phase-playing .battle-ad-slot,
 .online-screen.phase-result .online-hero,
 .online-screen.phase-result .online-menu,
 .online-screen.phase-result .battle-rule-note,
@@ -919,6 +921,26 @@ button {
 .online-screen.phase-result .battle-lobby {
   min-height: calc(100svh - 96px);
   align-content: start;
+}
+
+.online-screen.phase-result .battle-result-summary {
+  order: 1;
+}
+
+.online-screen.phase-result .battle-result-list {
+  order: 2;
+}
+
+.online-screen.phase-result .score-board {
+  order: 3;
+}
+
+.online-screen.phase-result .ready-button {
+  order: 4;
+}
+
+.online-screen.phase-result .battle-ad-slot {
+  order: 5;
 }
 
 .online-hero {
@@ -1166,10 +1188,39 @@ button {
 }
 
 .battle-play-area {
+  position: relative;
   min-width: 0;
   display: grid;
   gap: 10px;
   align-content: start;
+}
+
+.battle-countdown-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 18, 28, 0.42);
+  pointer-events: none;
+}
+
+.battle-countdown-layer[hidden] {
+  display: none;
+}
+
+.battle-countdown-layer strong {
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--gold);
+  color: #1f2937;
+  font-size: 48px;
+  font-weight: 950;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
 }
 
 .battle-problem-card {
@@ -1180,8 +1231,7 @@ button {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.battle-target-dice,
-.battle-white-dice {
+.battle-target-dice {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1205,47 +1255,39 @@ button {
   font-size: 14px;
 }
 
-.battle-white-dice {
-  gap: 7px;
-  flex-wrap: wrap;
+.battle-dice-row {
+  padding-top: 0;
 }
 
-.battle-white-dice span {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: #fff;
-  color: var(--ink);
-  font-size: 20px;
-  font-weight: 950;
-  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.12);
+.battle-dice-row .game-die {
+  height: 46px;
+  font-size: 21px;
 }
 
-.battle-expression-mock {
-  min-height: 48px;
+.battle-expression-input {
+  min-height: 54px;
   padding: 8px;
-  border-radius: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
 
-.battle-expression-mock span {
-  min-width: 34px;
-  height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--ink);
-  font-size: 20px;
-  font-weight: 950;
+.battle-expression-input .expression-token,
+.battle-expression-input .empty-expression {
+  min-height: 36px;
+}
+
+.battle-operator-bar button {
+  height: 40px;
+}
+
+.battle-action-row .answer-check-button,
+.battle-action-row .clear-expression-button {
+  height: 44px;
+}
+
+.battle-feedback {
+  min-height: 40px;
+  margin: 0;
 }
 
 .battle-status-list {
@@ -1323,6 +1365,39 @@ button {
 
 .score-board:empty {
   display: none;
+}
+
+.battle-result-summary {
+  padding: 12px;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+}
+
+.battle-result-summary[hidden] {
+  display: none;
+}
+
+.battle-result-summary div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.battle-result-summary span,
+.battle-result-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.battle-result-summary strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 950;
 }
 
 .score-board div {
@@ -1407,6 +1482,38 @@ button {
   color: var(--muted);
   font-size: 11px;
   font-weight: 850;
+}
+
+.ad-slot {
+  min-height: 86px;
+  padding: 14px 8px 8px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #d8e0e8;
+}
+
+.ad-slot[hidden] {
+  display: none;
+}
+
+.ad-slot span {
+  position: absolute;
+  left: 8px;
+  top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.ad-slot img {
+  width: 100%;
+  max-height: 68px;
+  object-fit: contain;
+  display: block;
 }
 
 .skin-strip {
@@ -2750,22 +2857,21 @@ button {
     font-size: 13px;
   }
 
-  .battle-white-dice {
+  .battle-dice-row {
     gap: 6px;
   }
 
-  .battle-white-dice span {
-    width: 38px;
-    height: 38px;
+  .battle-dice-row .game-die {
+    height: 40px;
     font-size: 19px;
   }
 
-  .battle-expression-mock {
+  .battle-expression-input {
     padding: 7px;
     gap: 3px;
   }
 
-  .battle-expression-mock span {
+  .battle-expression-input .expression-token {
     min-width: 30px;
     height: 34px;
     font-size: 19px;

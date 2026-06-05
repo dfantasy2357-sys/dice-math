@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260605-cache-reset">
+  <link rel="manifest" href="manifest.webmanifest?v=20260605-ad2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260605-cache-reset">
+  <link rel="stylesheet" href="styles.css?v=20260605-ad2">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -195,7 +195,6 @@
           </div>
         </div>
         <div class="score-board" id="scoreBoard" aria-label="누적 점수판"></div>
-        <button class="ready-button" id="onlineReadyButton" type="button">모두 준비 완료 미리보기</button>
         <section class="battle-round-panel" id="battleRoundPanel" aria-label="온라인 라운드 진행" hidden>
           <div class="battle-time-row">
             <strong>제한시간 120초</strong>
@@ -207,35 +206,52 @@
               <div class="battle-status-list" id="battleStatusList"></div>
             </aside>
             <div class="battle-play-area">
+              <div class="battle-countdown-layer" id="battleCountdownLayer" hidden>
+                <strong id="battleCountdownNumber">3</strong>
+              </div>
               <div class="battle-problem-card">
                 <div class="battle-target-dice">
-                  <span class="game-die black">20</span>
+                  <span class="game-die black" id="battleTensDie">?</span>
                   <span>+</span>
-                  <span class="game-die black">5</span>
-                  <strong>목표 25</strong>
+                  <span class="game-die black" id="battleOnesDie">?</span>
+                  <strong id="battleTargetLabel">목표 ?</strong>
                 </div>
-                <div class="battle-white-dice">
-                  <span>2</span>
-                  <span>3</span>
-                  <span>4</span>
-                  <span>5</span>
-                  <span>6</span>
-                </div>
+                <section class="game-dice-row battle-dice-row" id="battleDiceTray" aria-label="온라인 라운드 흰 주사위"></section>
               </div>
-              <div class="battle-expression-mock">
-                <span>(</span>
-                <span>5</span>
-                <span>×</span>
-                <span>4</span>
-                <span>)</span>
-                <span>+</span>
-                <span>3</span>
+              <div class="expression-preview battle-expression-input" id="battleExpressionPreview" aria-label="온라인 라운드 입력한 식">
+                <span class="empty-expression">라운드가 시작되면 식을 만들 수 있어요.</span>
               </div>
-              <p class="battle-secret-note">정답을 먼저 낸 사람의 식은 라운드 종료 후 공개됩니다.</p>
+              <section class="operator-bar battle-operator-bar" aria-label="온라인 라운드 연산자">
+                <button type="button" data-op="+">+</button>
+                <button type="button" data-op="-">−</button>
+                <button type="button" data-op="*">×</button>
+                <button type="button" data-op="/">÷</button>
+                <button type="button" data-op="(">(</button>
+                <button type="button" data-op=")">)</button>
+                <button class="power-op" id="battlePowerOp" type="button" data-op="power">^</button>
+                <button id="battleUndoButton" type="button">↶</button>
+              </section>
+              <div class="game-action-row battle-action-row">
+                <button class="clear-expression-button" id="battleClearExpressionButton" type="button">전체 지우기</button>
+                <button class="answer-check-button" id="battleAnswerCheckButton" type="button">제출</button>
+              </div>
+              <p class="game-feedback battle-feedback" id="battleFeedback">정답을 먼저 낸 사람의 식은 라운드 종료 후 공개됩니다.</p>
             </div>
           </div>
         </section>
+        <section class="battle-result-summary" id="battleResultSummary" aria-label="라운드 결과 요약" hidden>
+          <div>
+            <span id="battleResultKicker">1라운드 결과</span>
+            <strong id="battleResultTitle">이번 라운드 순위</strong>
+          </div>
+          <p id="battleResultMeta">제출 시간, 식, 획득 점수를 확인하세요.</p>
+        </section>
         <ol class="battle-result-list" id="battleResultList" hidden></ol>
+        <button class="ready-button" id="onlineReadyButton" type="button">모두 준비 완료 미리보기</button>
+        <aside class="ad-slot battle-ad-slot" id="battleAdSlot" aria-label="광고" hidden>
+          <span>광고</span>
+          <img src="ad-banner.jpg?v=20260605-ad2" alt="광고 배너">
+        </aside>
       </section>
     </section>
 
@@ -430,6 +446,10 @@
           <button class="result-next" id="resultNextButton" type="button">다음 문제</button>
           <button class="result-home" id="resultHomeButton" type="button">홈</button>
         </div>
+        <aside class="ad-slot result-ad-slot" aria-label="광고">
+          <span>광고</span>
+          <img src="ad-banner.jpg?v=20260605-ad2" alt="광고 배너">
+        </aside>
       </div>
     </section>
 
@@ -452,6 +472,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=20260605-cache-reset"></script>
+  <script src="app.js?v=20260605-ad2"></script>
 </body>
 </html>
