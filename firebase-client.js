@@ -263,7 +263,7 @@
       await roomRef.update({ updatedAt: window.firebase.database.ServerValue.TIMESTAMP });
       return { removedRoom: false };
     },
-    async cleanupStaleRooms({ maxAgeMs = 6 * 60 * 60 * 1000 } = {}) {
+    async cleanupStaleRooms({ maxAgeMs = 60 * 60 * 1000 } = {}) {
       requireDatabase(this);
 
       const now = Date.now();
