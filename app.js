@@ -111,6 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
+const APP_BUILD = "20260608-firebase4";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -448,7 +449,7 @@ function renderOnlineProgress(onlineRatio = Math.min(progress.clears / progress.
     ? `${progress.clears}개 클리어`
     : `${progress.clears} / ${progress.onlineGoal}`;
   onlineProgressFill.style.width = `${Math.round(onlineRatio * 100)}%`;
-  firebaseStatus.textContent = firebaseState.status;
+  firebaseStatus.textContent = `${firebaseState.status} · ${APP_BUILD}`;
   firebaseStatus.dataset.connected = firebaseState.ready ? "true" : "false";
   onlineStateLabel.textContent = isUnlocked ? "온라인 대전 입장 가능" : "100개 달성 후 해금";
   onlineStateCopy.textContent = isUnlocked
@@ -703,6 +704,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
     lobbyModeLabel.textContent = `${mode} · Firebase`;
     subscribeToFirebaseRoom(battleState.firebaseRoomCode);
   }
+  updateRoomActionState();
   updateHostControlButton();
   renderScoreBoard();
   setOnlinePhase("lobby");
@@ -781,6 +783,7 @@ function applyFirebaseRoomSnapshot(room) {
   onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || getOnlineNickname();
   renderLobbyPlayers();
   renderScoreBoard();
+  updateRoomActionState();
   updateHostControlButton();
 }
 
@@ -810,6 +813,21 @@ function getCurrentBattlePlayer() {
   return battleState.players.find((player) => player.id === uid) || battleState.players[0] || null;
 }
 
+function updateRoomActionState() {
+  if (!battleState.firebaseRoomCode) return;
+
+  if (battleState.phase === "lobby") {
+    onlineReadyButton.disabled = !battleState.isHost;
+    onlineReadyButton.textContent = battleState.isHost ? "모두 준비 완료 미리보기" : "방장 시작 대기";
+    return;
+  }
+
+  if (battleState.phase === "result" && !battleState.isHost) {
+    onlineReadyButton.disabled = true;
+    onlineReadyButton.textContent = "방장 다음 문제 대기";
+  }
+}
+
 function resetMockBattle() {
   clearBattleTimers();
   clearRoomSubscription();
@@ -836,6 +854,7 @@ function resetMockBattle() {
   battleAdSlot.hidden = true;
   onlineReadyButton.disabled = false;
   onlineReadyButton.textContent = "모두 준비 완료 미리보기";
+  updateRoomActionState();
   updateHostControlButton();
   renderScoreBoard();
 }
@@ -844,6 +863,7 @@ function setOnlinePhase(phase) {
   battleState.phase = phase;
   onlineScreen.classList.remove("phase-menu", "phase-lobby", "phase-playing", "phase-result");
   onlineScreen.classList.add(`phase-${phase}`);
+  updateRoomActionState();
   updateHostControlButton();
 }
 
@@ -903,6 +923,13 @@ function clearAutoStartTimers() {
 }
 
 function startMockBattleRound() {
+  if (battleState.firebaseRoomCode && !battleState.isHost) {
+    onlineReadyButton.disabled = true;
+    onlineReadyButton.textContent = "방장 시작 대기";
+    battleRuleNote.textContent = "참가자는 방장이 시작할 때까지 기다립니다.";
+    return;
+  }
+
   if (!battleState.players.length) resetMockBattle();
   clearBattleTimers();
   const problem = createSolvableProblem();

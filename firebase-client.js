@@ -165,7 +165,8 @@
 
       if (room.hostUid === uid) {
         await roomRef.remove();
-        return { removedRoom: true };
+        const deletedSnapshot = await roomRef.once("value");
+        return { removedRoom: !deletedSnapshot.exists() };
       }
 
       await roomRef.child(`players/${uid}`).remove();
