@@ -83,6 +83,7 @@
               name: cleanNickname(nickname),
               score: 0,
               status: "준비 전",
+              ready: false,
               isHost: true,
               online: true,
               joinedAt: now,
@@ -128,6 +129,7 @@
         name: cleanNickname(nickname),
         score: players[uid]?.score || 0,
         status: "준비 전",
+        ready: false,
         isHost: room.hostUid === uid,
         online: true,
         joinedAt: players[uid]?.joinedAt || now,
@@ -149,6 +151,19 @@
       const handler = (snapshot) => callback(snapshot.val());
       roomRef.on("value", handler);
       return () => roomRef.off("value", handler);
+    },
+    async setReady(code, ready = true) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      await this.database.ref(`rooms/${normalizedCode}/players/${uid}`).update({
+        status: ready ? "준비 완료" : "준비 전",
+        ready: Boolean(ready),
+        readyAt: ready ? now : null,
+      });
+      await this.database.ref(`rooms/${normalizedCode}`).update({ updatedAt: now });
     },
     async leaveRoom(code) {
       requireDatabase(this);

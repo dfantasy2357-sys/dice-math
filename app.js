@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase5";
+const APP_BUILD = "20260608-firebase6";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -761,6 +761,7 @@ function applyFirebaseRoomSnapshot(room) {
         name: player.name || "이름 없음",
         score: Number(player.score || 0),
         status: player.status || "준비 전",
+        ready: Boolean(player.ready || player.status === "준비 완료"),
         isHost: Boolean(player.isHost || room.hostUid === id),
         joinedAt: Number.isFinite(joinedAt) ? joinedAt : 0,
       };
@@ -820,8 +821,25 @@ function updateRoomActionState() {
   if (!battleState.firebaseRoomCode) return;
 
   if (battleState.phase === "lobby") {
-    onlineReadyButton.disabled = !battleState.isHost;
-    onlineReadyButton.textContent = battleState.isHost ? "모두 준비 완료 미리보기" : "방장 시작 대기";
+    const currentPlayer = getCurrentBattlePlayer();
+    const isReady = isPlayerReady(currentPlayer);
+    const hasEnoughPlayers = battleState.players.length >= 2;
+    const allReady = hasEnoughPlayers && battleState.players.every(isPlayerReady);
+
+    if (!isReady) {
+      onlineReadyButton.disabled = false;
+      onlineReadyButton.textContent = "준비하기";
+      return;
+    }
+
+    if (!battleState.isHost) {
+      onlineReadyButton.disabled = true;
+      onlineReadyButton.textContent = "준비 완료 · 방장 시작 대기";
+      return;
+    }
+
+    onlineReadyButton.disabled = !allReady;
+    onlineReadyButton.textContent = allReady ? "게임 시작" : "다른 참가자 준비 대기";
     return;
   }
 
@@ -831,15 +849,46 @@ function updateRoomActionState() {
   }
 }
 
-function handleOnlineReadyClick() {
-  if (battleState.firebaseRoomCode && !battleState.isHost) {
-    onlineReadyButton.disabled = true;
-    onlineReadyButton.textContent = "방장 시작 대기";
-    battleRuleNote.textContent = "참가자는 방장이 시작할 때까지 기다립니다.";
+function isPlayerReady(player) {
+  return Boolean(player?.ready || player?.status === "준비 완료");
+}
+
+async function handleOnlineReadyClick() {
+  if (!battleState.firebaseRoomCode) {
+    startMockBattleRound();
+    return;
+  }
+
+  const currentPlayer = getCurrentBattlePlayer();
+
+  if (!isPlayerReady(currentPlayer)) {
+    await setCurrentPlayerReady();
+    return;
+  }
+
+  const allReady = battleState.players.length >= 2 && battleState.players.every(isPlayerReady);
+
+  if (!battleState.isHost || !allReady) {
+    updateRoomActionState();
     return;
   }
 
   startMockBattleRound();
+}
+
+async function setCurrentPlayerReady() {
+  if (!battleState.firebaseRoomCode || !firebaseState.ready || !window.diceFirebase?.isEnabled()) return;
+
+  onlineReadyButton.disabled = true;
+  onlineReadyButton.textContent = "준비 저장 중...";
+
+  try {
+    await window.diceFirebase.setReady(battleState.firebaseRoomCode, true);
+  } catch (error) {
+    console.warn("Firebase 준비 상태 저장 실패:", error);
+    battleRuleNote.textContent = "준비 상태 저장에 실패했습니다. 다시 시도해 주세요.";
+    updateRoomActionState();
+  }
 }
 
 function resetMockBattle() {
