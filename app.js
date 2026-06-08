@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase6";
+const APP_BUILD = "20260608-firebase7";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -789,6 +789,10 @@ function applyFirebaseRoomSnapshot(room) {
   renderScoreBoard();
   updateRoomActionState();
   updateHostControlButton();
+
+  if (room.phase === "playing") {
+    enterFirebaseRoundShell(room);
+  }
 }
 
 function renderLobbyPlayers() {
@@ -873,7 +877,57 @@ async function handleOnlineReadyClick() {
     return;
   }
 
-  startMockBattleRound();
+  await startFirebaseRoundSignal();
+}
+
+async function startFirebaseRoundSignal() {
+  if (!battleState.firebaseRoomCode || !firebaseState.ready || !window.diceFirebase?.isEnabled()) return;
+
+  onlineReadyButton.disabled = true;
+  onlineReadyButton.textContent = "게임 시작 중...";
+
+  try {
+    await window.diceFirebase.startRound(battleState.firebaseRoomCode);
+  } catch (error) {
+    console.warn("Firebase 라운드 시작 실패:", error);
+    battleRuleNote.textContent = "라운드 시작에 실패했습니다. 준비 상태를 확인해 주세요.";
+    updateRoomActionState();
+  }
+}
+
+function enterFirebaseRoundShell(room) {
+  if (battleState.phase === "playing") {
+    renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
+    return;
+  }
+
+  clearBattleTimers();
+  setOnlinePhase("playing");
+  battleRoundPanel.hidden = false;
+  battleResultSummary.hidden = true;
+  battleResultList.hidden = true;
+  battleResultList.replaceChildren();
+  battleAdSlot.hidden = true;
+  battleCountdownLayer.hidden = true;
+  battleElapsed.textContent = "00.00";
+  lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드`;
+  battleTensDie.textContent = "?";
+  battleOnesDie.textContent = "?";
+  battleTargetLabel.textContent = "목표 ?";
+  battleDiceTray.hidden = true;
+  battleDiceTray.replaceChildren();
+  battleExpressionPreview.replaceChildren();
+  const message = document.createElement("span");
+  message.className = "empty-expression";
+  message.textContent = "방장이 게임을 시작했습니다. 다음 단계에서 같은 문제 공개를 연결합니다.";
+  battleExpressionPreview.append(message);
+  battleAnswerCheckButton.disabled = true;
+  battleClearExpressionButton.disabled = true;
+  battleUndoButton.disabled = true;
+  onlineReadyButton.disabled = true;
+  onlineReadyButton.textContent = "라운드 진행 중";
+  battleRuleNote.textContent = "Firebase 시작 신호 확인 완료 · 다음 단계는 같은 문제 공개입니다.";
+  renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
 }
 
 async function setCurrentPlayerReady() {

@@ -165,6 +165,52 @@
       });
       await this.database.ref(`rooms/${normalizedCode}`).update({ updatedAt: now });
     },
+    async startRound(code) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+
+      if (!snapshot.exists()) {
+        throw Object.assign(new Error("방을 찾을 수 없습니다."), { code: "room-not-found" });
+      }
+
+      const room = snapshot.val();
+      const players = room.players || {};
+      const currentPlayer = players[uid] || {};
+      const isHost = room.hostUid === uid || currentPlayer.isHost === true;
+
+      if (!isHost) {
+        throw Object.assign(new Error("방장만 시작할 수 있습니다."), { code: "not-host" });
+      }
+
+      const playerEntries = Object.entries(players);
+      const allReady = playerEntries.length >= 2 && playerEntries.every(([, player]) => (
+        player.ready === true || player.status === "준비 완료"
+      ));
+
+      if (!allReady) {
+        throw Object.assign(new Error("아직 준비하지 않은 참가자가 있습니다."), { code: "not-all-ready" });
+      }
+
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const playerUpdates = {};
+      playerEntries.forEach(([playerUid]) => {
+        playerUpdates[`players/${playerUid}/status`] = "풀이중";
+        playerUpdates[`players/${playerUid}/ready`] = false;
+        playerUpdates[`players/${playerUid}/readyAt`] = null;
+      });
+
+      await roomRef.update({
+        ...playerUpdates,
+        phase: "playing",
+        round: Number(room.round || 0) + 1,
+        roundStartedAt: now,
+        updatedAt: now,
+      });
+    },
     async leaveRoom(code) {
       requireDatabase(this);
 
