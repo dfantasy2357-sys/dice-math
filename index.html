@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260605-rules1">
+  <link rel="manifest" href="manifest.webmanifest?v=20260608-firebase2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260605-rules1">
+  <link rel="stylesheet" href="styles.css?v=20260608-firebase2">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -138,6 +138,7 @@
           <div class="unlock-bar" aria-label="온라인 대전 해금 진행도">
             <span id="onlineProgressFill"></span>
           </div>
+          <small class="firebase-status" id="firebaseStatus">Firebase 설정 전 · 목업 모드</small>
         </div>
       </section>
 
@@ -248,6 +249,7 @@
         </section>
         <ol class="battle-result-list" id="battleResultList" hidden></ol>
         <button class="ready-button" id="onlineReadyButton" type="button">모두 준비 완료 미리보기</button>
+        <button class="host-control-button" id="hostControlButton" type="button" hidden>자동시작 일시정지</button>
         <aside class="ad-slot battle-ad-slot" id="battleAdSlot" aria-label="광고" hidden>
           <span>광고</span>
           <img src="ad-banner.jpg?v=20260605-rules1" alt="광고 배너">
@@ -472,6 +474,11 @@
     </section>
   </main>
 
-  <script src="app.js?v=20260605-rules1"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
+  <script src="firebase-config.js?v=20260608-firebase2"></script>
+  <script src="firebase-client.js?v=20260608-firebase2"></script>
+  <script src="app.js?v=20260608-firebase2"></script>
 </body>
 </html>

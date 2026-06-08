@@ -939,8 +939,12 @@ button {
   order: 4;
 }
 
-.online-screen.phase-result .battle-ad-slot {
+.online-screen.phase-result .host-control-button {
   order: 5;
+}
+
+.online-screen.phase-result .battle-ad-slot {
+  order: 6;
 }
 
 .online-hero {
@@ -990,6 +994,16 @@ button {
 .online-progress-card strong {
   font-size: 22px;
   font-variant-numeric: tabular-nums;
+}
+
+.firebase-status {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.firebase-status[data-connected="true"] {
+  color: #b9f3d4;
 }
 
 .online-menu {
@@ -1108,16 +1122,29 @@ button {
   font-weight: 900;
 }
 
-.ready-button {
+.ready-button,
+.host-control-button {
   height: 48px;
   border-radius: 8px;
+  font-weight: 950;
+}
+
+.ready-button {
   background: var(--gold);
   color: #3b2a0c;
-  font-weight: 950;
 }
 
 .ready-button:disabled {
   opacity: 0.72;
+}
+
+.host-control-button {
+  background: #263241;
+  color: #fff;
+}
+
+.host-control-button[hidden] {
+  display: none;
 }
 
 .battle-round-panel {
