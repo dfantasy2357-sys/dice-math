@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase9";
+const APP_BUILD = "20260608-firebase10";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -471,12 +471,27 @@ async function initFirebaseConnection() {
   firebaseState.ready = Boolean(result.enabled && result.databaseReady);
   if (result.enabled && result.databaseReady) {
     firebaseState.status = "Firebase 연결됨 · 온라인 준비";
+    runFirebaseRoomCleanup();
   } else if (result.enabled) {
     firebaseState.status = "Firebase 로그인됨 · DB URL 필요";
   } else {
     firebaseState.status = "Firebase 설정 전 · 목업 모드";
   }
   renderOnlineProgress();
+}
+
+async function runFirebaseRoomCleanup() {
+  if (!window.diceFirebase?.cleanupStaleRooms) return;
+
+  try {
+    const result = await window.diceFirebase.cleanupStaleRooms();
+    if (result.removedCount > 0) {
+      firebaseState.status = `Firebase 연결됨 · 오래된 방 ${result.removedCount}개 정리`;
+      renderOnlineProgress();
+    }
+  } catch (error) {
+    console.warn("Firebase 방 정리 실패:", error);
+  }
 }
 
 function getNextRewardStatus() {

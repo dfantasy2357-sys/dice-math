@@ -263,6 +263,39 @@
       await roomRef.update({ updatedAt: window.firebase.database.ServerValue.TIMESTAMP });
       return { removedRoom: false };
     },
+    async cleanupStaleRooms({ maxAgeMs = 6 * 60 * 60 * 1000 } = {}) {
+      requireDatabase(this);
+
+      const now = Date.now();
+      const roomsRef = this.database.ref("rooms");
+      const snapshot = await roomsRef.once("value");
+      const rooms = snapshot.val() || {};
+      const updates = {};
+      let removedCount = 0;
+
+      Object.entries(rooms).forEach(([code, room]) => {
+        const players = room.players || {};
+        const playerCount = Object.keys(players).length;
+        const updatedAt = Number(room.updatedAt || room.createdAt || 0);
+        const isOld = updatedAt > 0 && now - updatedAt > maxAgeMs;
+        const isEmpty = playerCount === 0;
+
+        if (isEmpty || isOld) {
+          updates[`rooms/${code}`] = null;
+          removedCount += 1;
+
+          Object.keys(players).forEach((playerUid) => {
+            updates[`userRooms/${playerUid}/${code}`] = null;
+          });
+        }
+      });
+
+      if (removedCount > 0) {
+        await this.database.ref().update(updates);
+      }
+
+      return { removedCount };
+    },
   };
 
   window.diceFirebase = client;
