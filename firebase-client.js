@@ -207,6 +207,9 @@
         ...playerUpdates,
         currentProblem: problem || null,
         submissions: null,
+        roundResults: null,
+        resultRound: null,
+        resultAt: null,
         phase: "playing",
         round: Number(room.round || 0) + 1,
         roundStartedAt: now,
@@ -225,6 +228,119 @@
         [`submissions/${uid}/expression`]: expression,
         [`submissions/${uid}/time`]: Math.max(0, Math.round(Number(time || 0))),
         [`submissions/${uid}/submittedAt`]: now,
+        updatedAt: now,
+      });
+    },
+    async submitTimeout(code) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      await roomRef.update({
+        [`players/${uid}/status`]: "시간초과",
+        [`submissions/${uid}/expression`]: "",
+        [`submissions/${uid}/time`]: 120000,
+        [`submissions/${uid}/timedOut`]: true,
+        [`submissions/${uid}/submittedAt`]: now,
+        updatedAt: now,
+      });
+    },
+    async finishRound(code, { round, results }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const normalizedRound = Number(round || 0);
+      const resultList = Array.isArray(results) ? results : [];
+      const now = Date.now();
+
+      await roomRef.transaction((room) => {
+        if (!room) return room;
+        const players = room.players || {};
+        const currentPlayer = players[uid] || {};
+        const isHost = room.hostUid === uid || currentPlayer.isHost === true;
+        const roomRound = Number(room.round || 0);
+
+        if (!isHost || roomRound !== normalizedRound) return room;
+        if (room.phase === "result" && Number(room.resultRound || 0) === roomRound) return room;
+
+        const nextPlayers = { ...players };
+        resultList.forEach((result) => {
+          if (!result?.id || !nextPlayers[result.id]) return;
+          nextPlayers[result.id] = {
+            ...nextPlayers[result.id],
+            score: Number(nextPlayers[result.id].score || 0) + Number(result.points || 0),
+            status: result.timedOut ? "시간초과" : "완료",
+            ready: false,
+          };
+        });
+
+        return {
+          ...room,
+          players: nextPlayers,
+          phase: "result",
+          resultRound: roomRound,
+          roundResults: resultList.map((result) => ({
+            id: String(result.id || ""),
+            name: String(result.name || ""),
+            expression: String(result.expression || ""),
+            time: Math.max(0, Math.round(Number(result.time || 0))),
+            timedOut: Boolean(result.timedOut),
+            rankLabel: String(result.rankLabel || ""),
+            points: Number(result.points || 0),
+            timeLabel: String(result.timeLabel || ""),
+          })),
+          resultAt: now,
+          updatedAt: now,
+        };
+      });
+    },
+    async startNextRound(code, problem) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+
+      if (!snapshot.exists()) {
+        throw Object.assign(new Error("방을 찾을 수 없습니다."), { code: "room-not-found" });
+      }
+
+      const room = snapshot.val();
+      const players = room.players || {};
+      const currentPlayer = players[uid] || {};
+      const isHost = room.hostUid === uid || currentPlayer.isHost === true;
+
+      if (!isHost) {
+        throw Object.assign(new Error("방장만 다음 문제를 시작할 수 있습니다."), { code: "not-host" });
+      }
+
+      if (room.phase !== "result") {
+        throw Object.assign(new Error("아직 다음 문제를 시작할 수 없습니다."), { code: "round-not-finished" });
+      }
+
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const playerUpdates = {};
+      Object.keys(players).forEach((playerUid) => {
+        playerUpdates[`players/${playerUid}/status`] = "풀이중";
+        playerUpdates[`players/${playerUid}/ready`] = false;
+        playerUpdates[`players/${playerUid}/readyAt`] = null;
+      });
+
+      await roomRef.update({
+        ...playerUpdates,
+        currentProblem: problem || null,
+        submissions: null,
+        roundResults: null,
+        resultRound: null,
+        resultAt: null,
+        phase: "playing",
+        round: Number(room.round || 0) + 1,
+        roundStartedAt: now,
         updatedAt: now,
       });
     },
