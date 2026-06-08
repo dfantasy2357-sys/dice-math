@@ -27,6 +27,7 @@ const matchSizeButtons = document.querySelectorAll("[data-match-size]");
 const friendInviteButton = document.querySelector("#friendInviteButton");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
+const playerList = document.querySelector("#playerList");
 const onlinePlayerName = document.querySelector("#onlinePlayerName");
 const battleRuleNote = document.querySelector("#battleRuleNote");
 const scoreBoard = document.querySelector("#scoreBoard");
@@ -165,6 +166,7 @@ const battleState = {
   phase: "lobby",
   firebaseRoomCode: null,
   isHost: false,
+  roomUnsubscribe: null,
   roundStartedAt: null,
   roundTimerId: null,
   roundEndTimerId: null,
@@ -242,7 +244,7 @@ difficultyCards.forEach((button) => {
 soloButton.addEventListener("click", openSoloSheet);
 onlineButton.addEventListener("click", openOnlineScreen);
 onlineBackButton.addEventListener("click", openHome);
-leaveRoomButton.addEventListener("click", openOnlineScreen);
+leaveRoomButton.addEventListener("click", leaveCurrentRoom);
 createRoomButton.addEventListener("click", () => createOnlineRoom("비공개 친구 방", 4, createRoomButton));
 joinRoomButton.addEventListener("click", openJoinCodeSheet);
 joinCodeBackdrop.addEventListener("click", closeJoinCodeSheet);
@@ -661,6 +663,7 @@ function openOnlineScreen() {
   stopTimer();
   clearCountdown();
   clearRoll();
+  clearRoomSubscription();
   renderOnlineProgress();
   resetMockBattle();
   home.classList.remove("active");
@@ -670,6 +673,7 @@ function openOnlineScreen() {
 }
 
 function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), options = {}) {
+  clearRoomSubscription();
   clearBattleTimers();
   battleState.roomMode = mode;
   battleState.playerCount = playerCount;
@@ -685,7 +689,9 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   roomCodeLabel.textContent = roomCode;
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
   battleRuleNote.textContent = getBattleRuleNote(mode);
-  onlinePlayerName.textContent = battleState.players[0].name;
+  if (options.room) applyFirebaseRoomSnapshot(options.room);
+  else renderLobbyPlayers();
+  onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || battleState.players[0].name;
   battleRoundPanel.hidden = true;
   battleResultSummary.hidden = true;
   battleResultList.hidden = true;
@@ -695,14 +701,118 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   onlineReadyButton.textContent = "모두 준비 완료 미리보기";
   if (battleState.firebaseRoomCode) {
     lobbyModeLabel.textContent = `${mode} · Firebase`;
+    subscribeToFirebaseRoom(battleState.firebaseRoomCode);
   }
   updateHostControlButton();
   renderScoreBoard();
   setOnlinePhase("lobby");
 }
 
+async function leaveCurrentRoom() {
+  const roomCode = battleState.firebaseRoomCode;
+  const canLeaveFirebaseRoom = Boolean(roomCode && firebaseState.ready && window.diceFirebase?.isEnabled());
+
+  clearRoomSubscription();
+
+  if (canLeaveFirebaseRoom) {
+    try {
+      await window.diceFirebase.leaveRoom(roomCode);
+    } catch (error) {
+      console.warn("Firebase 방 나가기 실패:", error);
+    }
+  }
+
+  openOnlineScreen();
+}
+
+function subscribeToFirebaseRoom(roomCode) {
+  if (!firebaseState.ready || !window.diceFirebase?.isEnabled()) return;
+
+  try {
+    battleState.roomUnsubscribe = window.diceFirebase.watchRoom(roomCode, (room) => {
+      if (!room) {
+        clearRoomSubscription();
+        battleRuleNote.textContent = "방장이 나가서 방이 종료되었습니다.";
+        openOnlineScreen();
+        return;
+      }
+      applyFirebaseRoomSnapshot(room);
+    });
+  } catch (error) {
+    console.warn("Firebase 방 구독 실패:", error);
+  }
+}
+
+function clearRoomSubscription() {
+  if (!battleState.roomUnsubscribe) return;
+  battleState.roomUnsubscribe();
+  battleState.roomUnsubscribe = null;
+}
+
+function applyFirebaseRoomSnapshot(room) {
+  const uid = window.diceFirebase?.getUid();
+  const players = Object.entries(room.players || {})
+    .map(([id, player]) => {
+      const joinedAt = Number(player.joinedAt || 0);
+      return {
+        id,
+        name: player.name || "이름 없음",
+        score: Number(player.score || 0),
+        status: player.status || "준비 전",
+        isHost: Boolean(player.isHost || room.hostUid === id),
+        joinedAt: Number.isFinite(joinedAt) ? joinedAt : 0,
+      };
+    })
+    .sort((a, b) => {
+      if (a.id === uid) return -1;
+      if (b.id === uid) return 1;
+      if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+      return a.joinedAt - b.joinedAt;
+    });
+
+  battleState.roomMode = room.mode || battleState.roomMode;
+  battleState.playerCount = Number(room.playerCount || battleState.playerCount);
+  battleState.round = Number(room.round || battleState.round);
+  battleState.players = players.length ? players : battleState.players;
+  battleState.isHost = room.hostUid === uid;
+  battleState.autoStartPaused = Boolean(room.autoStartPaused);
+
+  lobbyModeLabel.textContent = `${battleState.roomMode} · Firebase`;
+  onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || getOnlineNickname();
+  renderLobbyPlayers();
+  renderScoreBoard();
+  updateHostControlButton();
+}
+
+function renderLobbyPlayers() {
+  const uid = window.diceFirebase?.getUid();
+  playerList.replaceChildren(
+    ...battleState.players.map((player, index) => {
+      const isMe = player.id === uid || (!uid && index === 0);
+      const row = document.createElement("div");
+      const badge = document.createElement("span");
+      const name = document.createElement("strong");
+      const status = document.createElement("small");
+
+      row.className = `player-row${isMe ? " me" : ""}`;
+      badge.className = "player-badge";
+      badge.textContent = isMe ? "나" : String(index + 1);
+      name.textContent = player.isHost ? `${player.name} 방장` : player.name;
+      status.textContent = player.status || (isMe ? "준비 전" : "기다리는 중");
+      row.append(badge, name, status);
+      return row;
+    })
+  );
+}
+
+function getCurrentBattlePlayer() {
+  const uid = window.diceFirebase?.getUid();
+  return battleState.players.find((player) => player.id === uid) || battleState.players[0] || null;
+}
+
 function resetMockBattle() {
   clearBattleTimers();
+  clearRoomSubscription();
   battleState.roomMode = "비공개 친구 방";
   battleState.playerCount = 4;
   battleState.round = 0;
@@ -717,6 +827,7 @@ function resetMockBattle() {
   lobbyModeLabel.textContent = "비공개 대기방";
   battleRuleNote.textContent = getBattleRuleNote(battleState.roomMode);
   roomCodeLabel.textContent = "A7K2Q9";
+  renderLobbyPlayers();
   onlinePlayerName.textContent = battleState.players[0].name;
   battleRoundPanel.hidden = true;
   battleResultSummary.hidden = true;
@@ -1060,6 +1171,7 @@ function openHome() {
   clearCountdown();
   clearRoll();
   clearBattleTimers();
+  clearRoomSubscription();
   gameScreen.classList.remove("active");
   onlineScreen.classList.remove("active");
   home.classList.add("active");

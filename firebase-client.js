@@ -141,6 +141,37 @@
       const updatedSnapshot = await roomRef.once("value");
       return { code: normalizedCode, room: updatedSnapshot.val() };
     },
+    watchRoom(code, callback) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const handler = (snapshot) => callback(snapshot.val());
+      roomRef.on("value", handler);
+      return () => roomRef.off("value", handler);
+    },
+    async leaveRoom(code) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+
+      if (!snapshot.exists()) return { removedRoom: false };
+
+      const room = snapshot.val();
+      await this.database.ref(`userRooms/${uid}/${normalizedCode}`).remove();
+
+      if (room.hostUid === uid) {
+        await roomRef.remove();
+        return { removedRoom: true };
+      }
+
+      await roomRef.child(`players/${uid}`).remove();
+      await roomRef.update({ updatedAt: window.firebase.database.ServerValue.TIMESTAMP });
+      return { removedRoom: false };
+    },
   };
 
   window.diceFirebase = client;
