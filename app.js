@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase4";
+const APP_BUILD = "20260608-firebase5";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -258,7 +258,7 @@ matchSizeButtons.forEach((button) => {
   button.addEventListener("click", () => openBattleLobby(`${button.dataset.matchSize}인 자동매칭`, Number(button.dataset.matchSize)));
 });
 friendInviteButton.addEventListener("click", () => createOnlineRoom("친구 초대 방", 4, friendInviteButton));
-onlineReadyButton.addEventListener("click", startMockBattleRound);
+onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
 hostControlButton.addEventListener("click", handleHostControl);
 sheetBackdrop.addEventListener("click", closeSoloSheet);
 sheetClose.addEventListener("click", closeSoloSheet);
@@ -772,14 +772,17 @@ function applyFirebaseRoomSnapshot(room) {
       return a.joinedAt - b.joinedAt;
     });
 
+  const currentPlayer = players.find((player) => player.id === uid) || null;
+  const isCurrentUserHost = Boolean(currentPlayer?.isHost || room.hostUid === uid);
+
   battleState.roomMode = room.mode || battleState.roomMode;
   battleState.playerCount = Number(room.playerCount || battleState.playerCount);
   battleState.round = Number(room.round || battleState.round);
   battleState.players = players.length ? players : battleState.players;
-  battleState.isHost = room.hostUid === uid;
+  battleState.isHost = isCurrentUserHost;
   battleState.autoStartPaused = Boolean(room.autoStartPaused);
 
-  lobbyModeLabel.textContent = `${battleState.roomMode} · Firebase`;
+  lobbyModeLabel.textContent = `${battleState.roomMode} · Firebase · ${battleState.isHost ? "방장" : "참가자"}`;
   onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || getOnlineNickname();
   renderLobbyPlayers();
   renderScoreBoard();
@@ -826,6 +829,17 @@ function updateRoomActionState() {
     onlineReadyButton.disabled = true;
     onlineReadyButton.textContent = "방장 다음 문제 대기";
   }
+}
+
+function handleOnlineReadyClick() {
+  if (battleState.firebaseRoomCode && !battleState.isHost) {
+    onlineReadyButton.disabled = true;
+    onlineReadyButton.textContent = "방장 시작 대기";
+    battleRuleNote.textContent = "참가자는 방장이 시작할 때까지 기다립니다.";
+    return;
+  }
+
+  startMockBattleRound();
 }
 
 function resetMockBattle() {

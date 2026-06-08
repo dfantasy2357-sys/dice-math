@@ -163,13 +163,25 @@
       const room = snapshot.val();
       await this.database.ref(`userRooms/${uid}/${normalizedCode}`).remove();
 
-      if (room.hostUid === uid) {
+      const leavingPlayer = room.players?.[uid] || {};
+      const isHost = room.hostUid === uid || leavingPlayer.isHost === true;
+
+      if (isHost) {
         await roomRef.remove();
         const deletedSnapshot = await roomRef.once("value");
         return { removedRoom: !deletedSnapshot.exists() };
       }
 
       await roomRef.child(`players/${uid}`).remove();
+      const remainingPlayersSnapshot = await roomRef.child("players").once("value");
+      const remainingPlayers = remainingPlayersSnapshot.val() || {};
+
+      if (Object.keys(remainingPlayers).length === 0) {
+        await roomRef.remove();
+        const deletedSnapshot = await roomRef.once("value");
+        return { removedRoom: !deletedSnapshot.exists() };
+      }
+
       await roomRef.update({ updatedAt: window.firebase.database.ServerValue.TIMESTAMP });
       return { removedRoom: false };
     },
