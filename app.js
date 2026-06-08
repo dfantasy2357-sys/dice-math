@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase8";
+const APP_BUILD = "20260608-firebase9";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -897,7 +897,7 @@ async function startFirebaseRoundSignal() {
 
 function enterFirebaseRound(room) {
   if (battleState.phase === "playing") {
-    if (room.currentProblem) renderFirebaseProblem(room.currentProblem);
+    if (room.currentProblem && !battleState.countdownTimerId) renderFirebaseProblem(room.currentProblem);
     renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
     return;
   }
@@ -913,7 +913,8 @@ function enterFirebaseRound(room) {
   battleElapsed.textContent = "00.00";
   lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드`;
   if (room.currentProblem) {
-    renderFirebaseProblem(room.currentProblem);
+    prepareHiddenFirebaseProblem(room.currentProblem);
+    beginFirebaseRevealCountdown(room.currentProblem);
   } else {
     battleTensDie.textContent = "?";
     battleOnesDie.textContent = "?";
@@ -928,20 +929,46 @@ function enterFirebaseRound(room) {
     setBattleInputEnabled(false);
   }
   onlineReadyButton.disabled = true;
-  onlineReadyButton.textContent = "라운드 진행 중";
-  battleRuleNote.textContent = "A/B폰에 같은 문제가 표시됩니다. 제출 동기화는 다음 단계입니다.";
+  onlineReadyButton.textContent = "3초 후 시작";
+  battleRuleNote.textContent = "3, 2, 1 후 같은 문제가 공개됩니다.";
   renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
 }
 
-function renderFirebaseProblem(problem) {
-  const normalizedProblem = {
-    tens: Number(problem.tens),
-    ones: Number(problem.ones),
-    target: Number(problem.target),
-    dice: Array.isArray(problem.dice) ? problem.dice.map(Number) : [],
-  };
+function prepareHiddenFirebaseProblem(problem) {
+  const normalizedProblem = normalizeFirebaseProblem(problem);
+  if (!normalizedProblem) return;
+  applyProblemToGame(normalizedProblem, "battle");
+  game.isRevealed = false;
+  renderGame();
+  setBattleInputEnabled(false);
+}
 
-  if (!normalizedProblem.tens || !normalizedProblem.ones || normalizedProblem.dice.length !== 5) return;
+function beginFirebaseRevealCountdown(problem) {
+  if (battleState.countdownTimerId) return;
+
+  let count = 3;
+  battleCountdownLayer.hidden = false;
+  battleCountdownNumber.textContent = count;
+
+  battleState.countdownTimerId = window.setInterval(() => {
+    count -= 1;
+    if (count > 0) {
+      battleCountdownNumber.textContent = count;
+      onlineReadyButton.textContent = `${count}초 후 시작`;
+      return;
+    }
+
+    clearInterval(battleState.countdownTimerId);
+    battleState.countdownTimerId = null;
+    battleCountdownLayer.hidden = true;
+    renderFirebaseProblem(problem);
+  }, 1000);
+}
+
+function renderFirebaseProblem(problem) {
+  const normalizedProblem = normalizeFirebaseProblem(problem);
+
+  if (!normalizedProblem) return;
 
   const currentDiceValues = game.dice.map((die) => die.value).join(",");
   const nextDiceValues = normalizedProblem.dice.join(",");
@@ -954,18 +981,36 @@ function renderFirebaseProblem(problem) {
   }
 
   game.isRevealed = true;
-  game.startedAt = null;
+  if (!battleState.roundStartedAt) {
+    battleState.roundStartedAt = performance.now();
+    battleState.roundTimerId = window.setInterval(() => {
+      battleElapsed.textContent = formatTime(performance.now() - battleState.roundStartedAt);
+    }, 47);
+  }
   renderGame();
-  setFeedback("같은 문제가 공개되었습니다. 제출 동기화는 다음 단계에서 연결합니다.", "success");
-  setBattleInputEnabled(false);
+  setFeedback("시작! 정답을 제출하면 상대 파티창에 완료로 표시됩니다.", "success");
+  setBattleInputEnabled(true);
+}
+
+function normalizeFirebaseProblem(problem) {
+  const normalizedProblem = {
+    tens: Number(problem.tens),
+    ones: Number(problem.ones),
+    target: Number(problem.target),
+    dice: Array.isArray(problem.dice) ? problem.dice.map(Number) : [],
+  };
+
+  if (!normalizedProblem.tens || !normalizedProblem.ones || normalizedProblem.dice.length !== 5) return null;
+  return normalizedProblem;
 }
 
 function setBattleInputEnabled(enabled) {
-  battleAnswerCheckButton.disabled = !enabled;
-  battleClearExpressionButton.disabled = !enabled;
-  battleUndoButton.disabled = !enabled;
+  const shouldEnable = enabled && !game.isSolved;
+  battleAnswerCheckButton.disabled = !shouldEnable;
+  battleClearExpressionButton.disabled = !shouldEnable;
+  battleUndoButton.disabled = !shouldEnable;
   document.querySelectorAll(".battle-operator-bar button").forEach((button) => {
-    button.disabled = !enabled;
+    button.disabled = !shouldEnable;
   });
 }
 
@@ -1947,8 +1992,9 @@ function checkAnswer() {
   handleCorrectAnswer(time);
 }
 
-function handleBattleCorrectAnswer(time, expression) {
-  const me = battleState.players[0];
+async function handleBattleCorrectAnswer(time, expression) {
+  const me = getCurrentBattlePlayer();
+  if (!me) return;
   battleState.submissions = battleState.submissions.filter((submission) => submission.id !== me.id);
   battleState.submissions.push({
     id: me.id,
@@ -1962,6 +2008,16 @@ function handleBattleCorrectAnswer(time, expression) {
   setFeedback("제출 완료! 다른 사람의 식은 라운드 종료 후 공개됩니다.");
   renderGame();
   renderBattleStatuses(battleState.statusMap);
+
+  if (battleState.firebaseRoomCode && firebaseState.ready && window.diceFirebase?.isEnabled()) {
+    try {
+      await window.diceFirebase.submitAnswer(battleState.firebaseRoomCode, { expression, time });
+    } catch (error) {
+      console.warn("Firebase 제출 상태 저장 실패:", error);
+      setFeedback("제출은 완료했지만 온라인 상태 저장에 실패했습니다.", "error");
+    }
+  }
+
   maybeFinishBattleRound();
 }
 

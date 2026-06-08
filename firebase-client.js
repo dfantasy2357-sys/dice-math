@@ -206,9 +206,25 @@
       await roomRef.update({
         ...playerUpdates,
         currentProblem: problem || null,
+        submissions: null,
         phase: "playing",
         round: Number(room.round || 0) + 1,
         roundStartedAt: now,
+        updatedAt: now,
+      });
+    },
+    async submitAnswer(code, { expression, time }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      await roomRef.update({
+        [`players/${uid}/status`]: "완료",
+        [`submissions/${uid}/expression`]: expression,
+        [`submissions/${uid}/time`]: Math.max(0, Math.round(Number(time || 0))),
+        [`submissions/${uid}/submittedAt`]: now,
         updatedAt: now,
       });
     },
