@@ -111,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase7";
+const APP_BUILD = "20260608-firebase8";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -791,7 +791,7 @@ function applyFirebaseRoomSnapshot(room) {
   updateHostControlButton();
 
   if (room.phase === "playing") {
-    enterFirebaseRoundShell(room);
+    enterFirebaseRound(room);
   }
 }
 
@@ -887,7 +887,7 @@ async function startFirebaseRoundSignal() {
   onlineReadyButton.textContent = "게임 시작 중...";
 
   try {
-    await window.diceFirebase.startRound(battleState.firebaseRoomCode);
+    await window.diceFirebase.startRound(battleState.firebaseRoomCode, createSolvableProblem());
   } catch (error) {
     console.warn("Firebase 라운드 시작 실패:", error);
     battleRuleNote.textContent = "라운드 시작에 실패했습니다. 준비 상태를 확인해 주세요.";
@@ -895,8 +895,9 @@ async function startFirebaseRoundSignal() {
   }
 }
 
-function enterFirebaseRoundShell(room) {
+function enterFirebaseRound(room) {
   if (battleState.phase === "playing") {
+    if (room.currentProblem) renderFirebaseProblem(room.currentProblem);
     renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
     return;
   }
@@ -911,23 +912,61 @@ function enterFirebaseRoundShell(room) {
   battleCountdownLayer.hidden = true;
   battleElapsed.textContent = "00.00";
   lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드`;
-  battleTensDie.textContent = "?";
-  battleOnesDie.textContent = "?";
-  battleTargetLabel.textContent = "목표 ?";
-  battleDiceTray.hidden = true;
-  battleDiceTray.replaceChildren();
-  battleExpressionPreview.replaceChildren();
-  const message = document.createElement("span");
-  message.className = "empty-expression";
-  message.textContent = "방장이 게임을 시작했습니다. 다음 단계에서 같은 문제 공개를 연결합니다.";
-  battleExpressionPreview.append(message);
-  battleAnswerCheckButton.disabled = true;
-  battleClearExpressionButton.disabled = true;
-  battleUndoButton.disabled = true;
+  if (room.currentProblem) {
+    renderFirebaseProblem(room.currentProblem);
+  } else {
+    battleTensDie.textContent = "?";
+    battleOnesDie.textContent = "?";
+    battleTargetLabel.textContent = "목표 ?";
+    battleDiceTray.hidden = true;
+    battleDiceTray.replaceChildren();
+    battleExpressionPreview.replaceChildren();
+    const message = document.createElement("span");
+    message.className = "empty-expression";
+    message.textContent = "문제 데이터를 기다리고 있습니다.";
+    battleExpressionPreview.append(message);
+    setBattleInputEnabled(false);
+  }
   onlineReadyButton.disabled = true;
   onlineReadyButton.textContent = "라운드 진행 중";
-  battleRuleNote.textContent = "Firebase 시작 신호 확인 완료 · 다음 단계는 같은 문제 공개입니다.";
+  battleRuleNote.textContent = "A/B폰에 같은 문제가 표시됩니다. 제출 동기화는 다음 단계입니다.";
   renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
+}
+
+function renderFirebaseProblem(problem) {
+  const normalizedProblem = {
+    tens: Number(problem.tens),
+    ones: Number(problem.ones),
+    target: Number(problem.target),
+    dice: Array.isArray(problem.dice) ? problem.dice.map(Number) : [],
+  };
+
+  if (!normalizedProblem.tens || !normalizedProblem.ones || normalizedProblem.dice.length !== 5) return;
+
+  const currentDiceValues = game.dice.map((die) => die.value).join(",");
+  const nextDiceValues = normalizedProblem.dice.join(",");
+  const isSameProblem = game.mode === "battle"
+    && game.target === normalizedProblem.target
+    && currentDiceValues === nextDiceValues;
+
+  if (!isSameProblem) {
+    applyProblemToGame(normalizedProblem, "battle");
+  }
+
+  game.isRevealed = true;
+  game.startedAt = null;
+  renderGame();
+  setFeedback("같은 문제가 공개되었습니다. 제출 동기화는 다음 단계에서 연결합니다.", "success");
+  setBattleInputEnabled(false);
+}
+
+function setBattleInputEnabled(enabled) {
+  battleAnswerCheckButton.disabled = !enabled;
+  battleClearExpressionButton.disabled = !enabled;
+  battleUndoButton.disabled = !enabled;
+  document.querySelectorAll(".battle-operator-bar button").forEach((button) => {
+    button.disabled = !enabled;
+  });
 }
 
 async function setCurrentPlayerReady() {

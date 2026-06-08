@@ -165,7 +165,7 @@
       });
       await this.database.ref(`rooms/${normalizedCode}`).update({ updatedAt: now });
     },
-    async startRound(code) {
+    async startRound(code, problem) {
       requireDatabase(this);
 
       const normalizedCode = String(code || "").trim().toUpperCase();
@@ -205,6 +205,7 @@
 
       await roomRef.update({
         ...playerUpdates,
+        currentProblem: problem || null,
         phase: "playing",
         round: Number(room.round || 0) + 1,
         roundStartedAt: now,
