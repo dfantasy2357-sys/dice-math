@@ -59,7 +59,7 @@
     getDatabase() {
       return this.database;
     },
-    async createRoom({ mode, playerCount, nickname }) {
+    async createRoom({ mode, playerCount, nickname, matchmaking = false }) {
       requireDatabase(this);
 
       const uid = this.getUid();
@@ -72,6 +72,7 @@
           code,
           mode,
           playerCount,
+          matchmaking: Boolean(matchmaking),
           phase: "lobby",
           round: 0,
           hostUid: uid,
@@ -86,6 +87,8 @@
               ready: false,
               isHost: true,
               online: true,
+              activeRound: 0,
+              waitingNextRound: false,
               joinedAt: now,
             },
           },
@@ -102,6 +105,32 @@
       }
 
       throw Object.assign(new Error("중복되지 않는 방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
+    },
+    async findOrCreateMatch({ playerCount, nickname }) {
+      requireDatabase(this);
+
+      const mode = `${Number(playerCount || 2)}인 자동매칭`;
+      const roomsSnapshot = await this.database.ref("rooms").once("value");
+      const rooms = roomsSnapshot.val() || {};
+      const waitingRoom = Object.entries(rooms).find(([, room]) => {
+        const roomPlayers = room.players || {};
+        return room.matchmaking === true
+          && room.mode === mode
+          && room.phase === "lobby"
+          && Number(room.playerCount || 0) === Number(playerCount)
+          && Object.keys(roomPlayers).length < Number(playerCount);
+      });
+
+      if (waitingRoom) {
+        return this.joinRoom(waitingRoom[0], { nickname });
+      }
+
+      return this.createRoom({
+        mode,
+        playerCount: Number(playerCount),
+        nickname,
+        matchmaking: true,
+      });
     },
     async joinRoom(code, { nickname }) {
       requireDatabase(this);
@@ -125,13 +154,16 @@
       }
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const isWaitingForNextRound = room.phase === "playing" || room.phase === "result";
       await roomRef.child(`players/${uid}`).update({
         name: cleanNickname(nickname),
         score: players[uid]?.score || 0,
-        status: "준비 전",
+        status: isWaitingForNextRound ? "다음 라운드 대기" : "준비 전",
         ready: false,
         isHost: room.hostUid === uid,
         online: true,
+        activeRound: isWaitingForNextRound ? Number(room.round || 0) + 1 : Number(room.round || 0),
+        waitingNextRound: isWaitingForNextRound,
         joinedAt: players[uid]?.joinedAt || now,
       });
       await roomRef.update({ updatedAt: now });
@@ -187,9 +219,11 @@
       }
 
       const playerEntries = Object.entries(players);
-      const allReady = playerEntries.length >= 2 && playerEntries.every(([, player]) => (
+      const isAutoMatch = room.matchmaking === true || String(room.mode || "").includes("자동매칭");
+      const isFullAutoMatch = isAutoMatch && playerEntries.length === Number(room.playerCount || playerEntries.length);
+      const allReady = isFullAutoMatch || (playerEntries.length >= 2 && playerEntries.every(([, player]) => (
         player.ready === true || player.status === "준비 완료"
-      ));
+      )));
 
       if (!allReady) {
         throw Object.assign(new Error("아직 준비하지 않은 참가자가 있습니다."), { code: "not-all-ready" });
@@ -197,10 +231,13 @@
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
       const playerUpdates = {};
+      const nextRound = Number(room.round || 0) + 1;
       playerEntries.forEach(([playerUid]) => {
         playerUpdates[`players/${playerUid}/status`] = "풀이중";
         playerUpdates[`players/${playerUid}/ready`] = false;
         playerUpdates[`players/${playerUid}/readyAt`] = null;
+        playerUpdates[`players/${playerUid}/activeRound`] = nextRound;
+        playerUpdates[`players/${playerUid}/waitingNextRound`] = false;
       });
 
       await roomRef.update({
@@ -211,7 +248,7 @@
         resultRound: null,
         resultAt: null,
         phase: "playing",
-        round: Number(room.round || 0) + 1,
+        round: nextRound,
         roundStartedAt: now,
         updatedAt: now,
       });
@@ -325,10 +362,13 @@
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
       const playerUpdates = {};
+      const nextRound = Number(room.round || 0) + 1;
       Object.keys(players).forEach((playerUid) => {
         playerUpdates[`players/${playerUid}/status`] = "풀이중";
         playerUpdates[`players/${playerUid}/ready`] = false;
         playerUpdates[`players/${playerUid}/readyAt`] = null;
+        playerUpdates[`players/${playerUid}/activeRound`] = nextRound;
+        playerUpdates[`players/${playerUid}/waitingNextRound`] = false;
       });
 
       await roomRef.update({
@@ -339,7 +379,7 @@
         resultRound: null,
         resultAt: null,
         phase: "playing",
-        round: Number(room.round || 0) + 1,
+        round: nextRound,
         roundStartedAt: now,
         updatedAt: now,
       });
