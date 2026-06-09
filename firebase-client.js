@@ -12,6 +12,25 @@
   }
 
   function cleanNickname(nickname) {
+    const fallback = "나의 닉네임";
+    const safeCleaned = String(nickname || fallback).trim().slice(0, 10) || fallback;
+    const safeNormalized = safeCleaned
+      .normalize("NFKC")
+      .replace(/\s+/g, "")
+      .replace(/[^\p{L}\p{N}]/gu, "")
+      .toLowerCase();
+    const safeBannedPatterns = [
+      /시발|씨발|ㅅㅂ|병신|ㅂㅅ|개새|개색|좆|존나|지랄|염병/i,
+      /꺼져|닥쳐|죽어|자살|살인|테러/i,
+      /섹스|보지|자지|애미|느금|니미/i,
+      /fuck|shit|sex|bitch|asshole|nigger|nigga/i,
+      /admin|관리자|운영자|cnmmath/i,
+    ];
+    if (!safeNormalized || safeBannedPatterns.some((pattern) => pattern.test(safeNormalized))) {
+      return fallback;
+    }
+    return safeCleaned;
+
     const cleaned = (nickname || "나의 닉네임").trim().slice(0, 10) || "나의 닉네임";
     const normalized = cleaned
       .replace(/\s+/g, "")

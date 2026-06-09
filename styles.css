@@ -827,8 +827,9 @@ button {
 }
 
 .locked-action {
-  background: #e8eef4;
+  background: #fff4cf;
   color: var(--ink);
+  box-shadow: inset 0 0 0 2px rgba(240, 184, 76, 0.55);
 }
 
 .locked-action.unlocked {
@@ -1863,6 +1864,122 @@ button {
   background: var(--gold);
   color: #3b2a0c;
   font-size: 10px;
+}
+
+.settings-sheet,
+.online-difficulty-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+}
+
+.settings-sheet[hidden],
+.online-difficulty-sheet[hidden] {
+  display: none;
+}
+
+.settings-panel {
+  max-height: min(86svh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-nickname-field {
+  margin-top: 14px;
+}
+
+.settings-help {
+  min-height: 18px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.settings-row {
+  min-height: 64px;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f6f8fa;
+}
+
+.settings-row strong,
+.settings-info-list strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.settings-row span,
+.settings-info-list span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.settings-toggle {
+  min-width: 66px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+}
+
+.settings-toggle.off {
+  background: #8b95a1;
+}
+
+.settings-details {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f0f7f4;
+}
+
+.settings-details summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 950;
+}
+
+.settings-details p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.settings-info-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.settings-info-list div {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.settings-reset-button {
+  width: 100%;
+  height: 48px;
+  margin-top: 12px;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 950;
 }
 
 .swatch {

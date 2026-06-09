@@ -9,6 +9,20 @@ const previewDice = document.querySelectorAll(".splash-die, .table-die");
 const soloButton = document.querySelector("#soloButton");
 const onlineButton = document.querySelector("#onlineButton");
 const onlineScreen = document.querySelector("#onlineScreen");
+const settingsOpenButtons = document.querySelectorAll("[data-settings-open]");
+const settingsSheet = document.querySelector("#settingsSheet");
+const settingsBackdrop = document.querySelector("#settingsBackdrop");
+const settingsClose = document.querySelector("#settingsClose");
+const settingsNicknameInput = document.querySelector("#settingsNicknameInput");
+const settingsNicknameHelp = document.querySelector("#settingsNicknameHelp");
+const soundToggleButton = document.querySelector("#soundToggleButton");
+const resetDataButton = document.querySelector("#resetDataButton");
+const settingsVersion = document.querySelector("#settingsVersion");
+const onlineDifficultySheet = document.querySelector("#onlineDifficultySheet");
+const onlineDifficultyBackdrop = document.querySelector("#onlineDifficultyBackdrop");
+const onlineDifficultyClose = document.querySelector("#onlineDifficultyClose");
+const onlineDifficultyStart = document.querySelector("#onlineDifficultyStart");
+const onlineDifficultyButtons = document.querySelectorAll("[data-online-difficulty]");
 const onlineBackButton = document.querySelector("#onlineBackButton");
 const leaveRoomButton = document.querySelector("#leaveRoomButton");
 const onlineStateLabel = document.querySelector("#onlineStateLabel");
@@ -117,12 +131,13 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-room-lifecycle1";
+const APP_BUILD = "20260609-settings1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
 const DEFAULT_BATTLE_TARGET_SCORE = 200;
 const MAX_BATTLE_TARGET_SCORE = 500;
+const DEFAULT_NICKNAME = "나의 닉네임";
 const bannedNicknamePatterns = [
   /씨\s*발/i,
   /시\s*발/i,
@@ -136,6 +151,13 @@ const bannedNicknamePatterns = [
   /fuck/i,
   /shit/i,
   /sex/i,
+];
+const extraBannedNicknamePatterns = [
+  /시발|씨발|ㅅㅂ|병신|ㅂㅅ|개새|개색|좆|존나|지랄|염병/i,
+  /꺼져|닥쳐|죽어|자살|살인|테러/i,
+  /섹스|보지|자지|애미|느금|니미/i,
+  /fuck|shit|sex|bitch|asshole|nigger|nigga/i,
+  /admin|관리자|운영자|cnmmath/i,
 ];
 const skinClasses = [
   "theme-basic",
@@ -180,8 +202,10 @@ const game = {
 };
 
 let selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
+let selectedOnlineDifficulty = localStorage.getItem("diceMath.onlineDifficulty") || "basic";
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
+let soundEnabled = localStorage.getItem("diceMath.soundEnabled") !== "false";
 let pendingRewardSkin = null;
 let nextId = 0;
 const usedMockRoomCodes = new Set(["A7K2Q9"]);
@@ -228,6 +252,7 @@ setTimeout(() => {
 let firebaseInitPromise = initFirebaseConnection();
 renderProgress();
 renderDifficulty();
+renderOnlineDifficulty();
 renderBattleGoalOptions();
 applySkin(selectedSkin, { closeSheet: false });
 renderGame();
@@ -237,6 +262,9 @@ nicknameInput.addEventListener("input", () => {
   nicknamePreview.textContent = value
     ? getNicknameWarning(value) || value
     : "닉네임을 정해주세요";
+  if (settingsNicknameInput && settingsNicknameInput.value !== nicknameInput.value) {
+    settingsNicknameInput.value = nicknameInput.value;
+  }
 });
 
 skinButtons.forEach((button) => {
@@ -281,7 +309,7 @@ difficultyCards.forEach((button) => {
 });
 
 soloButton.addEventListener("click", openSoloSheet);
-onlineButton.addEventListener("click", openOnlineScreen);
+onlineButton.addEventListener("click", openOnlineDifficultySheet);
 onlineBackButton.addEventListener("click", handleOnlineBackClick);
 leaveRoomButton.addEventListener("click", leaveCurrentRoom);
 createRoomButton.addEventListener("click", () => createOnlineRoom("비공개 친구 방", 4, createRoomButton));
@@ -305,6 +333,27 @@ battleGoalButtons.forEach((button) => {
 onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
 hostControlButton.addEventListener("click", handleHostControl);
 battleFinalClose.addEventListener("click", closeBattleFinalModal);
+settingsOpenButtons.forEach((button) => {
+  button.addEventListener("click", openSettingsSheet);
+});
+settingsBackdrop.addEventListener("click", closeSettingsSheet);
+settingsClose.addEventListener("click", closeSettingsSheet);
+settingsNicknameInput.addEventListener("input", handleSettingsNicknameInput);
+soundToggleButton.addEventListener("click", toggleSoundSetting);
+resetDataButton.addEventListener("click", resetLocalData);
+onlineDifficultyBackdrop.addEventListener("click", closeOnlineDifficultySheet);
+onlineDifficultyClose.addEventListener("click", closeOnlineDifficultySheet);
+onlineDifficultyStart.addEventListener("click", () => {
+  closeOnlineDifficultySheet();
+  openOnlineScreen();
+});
+onlineDifficultyButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedOnlineDifficulty = button.dataset.onlineDifficulty === "power" ? "power" : "basic";
+    localStorage.setItem("diceMath.onlineDifficulty", selectedOnlineDifficulty);
+    renderOnlineDifficulty();
+  });
+});
 sheetBackdrop.addEventListener("click", closeSoloSheet);
 sheetClose.addEventListener("click", closeSoloSheet);
 sheetStart.addEventListener("click", openGameScreen);
@@ -494,6 +543,17 @@ function renderProgress() {
 }
 
 function renderOnlineProgress(onlineRatio = Math.min(progress.clears / progress.onlineGoal, 1)) {
+  onlineProgressCount.textContent = "온라인 준비";
+  onlineProgressFill.style.width = "100%";
+  firebaseStatus.textContent = `${firebaseState.status} · ${APP_BUILD}`;
+  firebaseStatus.dataset.connected = firebaseState.ready ? "true" : "false";
+  onlineStateLabel.textContent = "바로 입장 가능";
+  onlineStateCopy.textContent = "친구와 방 코드로 만나거나 자동매칭으로 바로 대전할 수 있어요.";
+  unlockText.textContent = "바로 입장";
+  unlockFill.style.width = "100%";
+  onlineButton.classList.add("unlocked");
+  return;
+
   const isUnlocked = progress.clears >= progress.onlineGoal;
   onlineProgressCount.textContent = isUnlocked
     ? `${progress.clears}개 클리어`
@@ -603,6 +663,68 @@ function closeSkinSheet() {
   skinSheet.hidden = true;
 }
 
+function openSettingsSheet() {
+  settingsNicknameInput.value = nicknameInput.value;
+  renderSettings();
+  settingsSheet.hidden = false;
+  window.setTimeout(() => settingsNicknameInput.focus(), 40);
+}
+
+function closeSettingsSheet() {
+  settingsSheet.hidden = true;
+}
+
+function renderSettings() {
+  settingsVersion.textContent = APP_BUILD;
+  soundToggleButton.textContent = soundEnabled ? "켜짐" : "꺼짐";
+  soundToggleButton.setAttribute("aria-pressed", String(soundEnabled));
+  soundToggleButton.classList.toggle("off", !soundEnabled);
+  settingsNicknameHelp.textContent = getNicknameWarning(settingsNicknameInput.value)
+    || "닉네임은 온라인 대전에서 표시됩니다.";
+}
+
+function handleSettingsNicknameInput() {
+  nicknameInput.value = settingsNicknameInput.value;
+  const value = settingsNicknameInput.value.trim();
+  nicknamePreview.textContent = value
+    ? getNicknameWarning(value) || value
+    : "닉네임을 정해주세요";
+  renderSettings();
+}
+
+function toggleSoundSetting() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem("diceMath.soundEnabled", String(soundEnabled));
+  renderSettings();
+}
+
+function resetLocalData() {
+  if (!window.confirm("클리어 수와 스킨 보상을 초기화할까요?")) return;
+
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith("diceMath:record:"))
+    .forEach((key) => localStorage.removeItem(key));
+  progress.clears = 0;
+  localStorage.setItem("diceMath.clearCount", "0");
+  claimedSkinIds.clear();
+  defaultClaimedSkins.forEach((skin) => claimedSkinIds.add(skin));
+  localStorage.setItem("diceMath.claimedSkins", JSON.stringify([...claimedSkinIds]));
+  selectedDifficulty = "basic";
+  selectedOnlineDifficulty = "basic";
+  selectedBattleTargetScore = DEFAULT_BATTLE_TARGET_SCORE;
+  soundEnabled = true;
+  localStorage.setItem("diceMath.difficulty", selectedDifficulty);
+  localStorage.setItem("diceMath.onlineDifficulty", selectedOnlineDifficulty);
+  localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
+  localStorage.setItem("diceMath.soundEnabled", "true");
+  applySkin("basic", { closeSheet: false });
+  renderDifficulty();
+  renderOnlineDifficulty();
+  renderBattleGoalOptions();
+  renderProgress();
+  renderSettings();
+}
+
 function renderDifficulty() {
   difficultyCards.forEach((button) => {
     button.classList.toggle("active", button.dataset.difficulty === selectedDifficulty);
@@ -626,6 +748,8 @@ function renderBattleGoalOptions() {
 }
 
 function openSoloSheet() {
+  selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
+  renderDifficulty();
   soloSheet.hidden = false;
 }
 
@@ -641,6 +765,21 @@ function openJoinCodeSheet() {
 
 function closeJoinCodeSheet() {
   joinCodeSheet.hidden = true;
+}
+
+function openOnlineDifficultySheet() {
+  renderOnlineDifficulty();
+  onlineDifficultySheet.hidden = false;
+}
+
+function closeOnlineDifficultySheet() {
+  onlineDifficultySheet.hidden = true;
+}
+
+function renderOnlineDifficulty() {
+  onlineDifficultyButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.onlineDifficulty === selectedOnlineDifficulty);
+  });
 }
 
 async function joinRoomWithCode() {
@@ -669,7 +808,7 @@ async function createOnlineRoom(mode, playerCount, sourceButton) {
       mode,
       playerCount,
       nickname: getOnlineNickname(),
-      difficulty: selectedDifficulty,
+      difficulty: selectedOnlineDifficulty,
       targetScore: selectedBattleTargetScore,
     });
     openBattleLobby(mode, playerCount, result.code, {
@@ -703,7 +842,7 @@ async function joinAutoMatch(playerCount, sourceButton) {
     const result = await window.diceFirebase.findOrCreateMatch({
       playerCount,
       nickname: getOnlineNickname(),
-      difficulty: selectedDifficulty,
+      difficulty: selectedOnlineDifficulty,
       targetScore: selectedBattleTargetScore,
     });
     openBattleLobby(mode, playerCount, result.code, {
@@ -756,6 +895,9 @@ async function joinOnlineRoom(code) {
 
 function getOnlineNickname() {
   const nickname = cleanLocalNickname(nicknameInput.value);
+  if (nicknameInput.value.trim() && nickname === DEFAULT_NICKNAME) {
+    nicknamePreview.textContent = "사용할 수 없는 닉네임이에요";
+  }
   if (nicknameInput.value.trim() && nickname === "나의 닉네임") {
     nicknamePreview.textContent = "사용할 수 없는 닉네임이에요";
   }
@@ -763,6 +905,13 @@ function getOnlineNickname() {
 }
 
 function normalizeNicknameText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .toLowerCase();
+
   return String(value || "")
     .trim()
     .replace(/\s+/g, "")
@@ -773,7 +922,8 @@ function normalizeNicknameText(value) {
 function isNicknameAllowed(value) {
   const normalized = normalizeNicknameText(value);
   if (!normalized) return true;
-  return !bannedNicknamePatterns.some((pattern) => pattern.test(normalized));
+  return ![...bannedNicknamePatterns, ...extraBannedNicknamePatterns]
+    .some((pattern) => pattern.test(normalized));
 }
 
 function getNicknameWarning(value) {
@@ -805,8 +955,11 @@ function clearButtonBusy(button) {
 function openOnlineScreen() {
   closeSoloSheet();
   closeJoinCodeSheet();
+  closeSettingsSheet();
+  closeOnlineDifficultySheet();
   closeSuccessResult();
   battleFinalModal.hidden = true;
+  applyOnlineDifficulty(selectedOnlineDifficulty);
   stopTimer();
   clearCountdown();
   clearRoll();
@@ -2106,6 +2259,8 @@ function renderScoreBoard() {
 
 function openGameScreen() {
   closeSoloSheet();
+  closeSettingsSheet();
+  closeOnlineDifficultySheet();
   closeSuccessResult();
   clearBattleTimers();
   home.classList.remove("active");
@@ -2116,6 +2271,9 @@ function openGameScreen() {
 }
 
 function openHome() {
+  closeSoloSheet();
+  closeSettingsSheet();
+  closeOnlineDifficultySheet();
   closeSuccessResult();
   stopTimer();
   clearCountdown();
@@ -2425,6 +2583,10 @@ function createNumberToken(token, index) {
 function renderRecord() {
   const ui = getGameUi();
   if (!ui.recordLine) return;
+  ui.recordLine.textContent = game.isRevealed
+    ? "흰 주사위와 연산자를 눌러 식을 만드세요."
+    : "문제가 곧 공개됩니다.";
+  return;
 
   if (!game.isRevealed) {
     ui.recordLine.textContent = "문제가 곧 공개됩니다.";
@@ -2707,9 +2869,8 @@ function checkAnswer() {
     return;
   }
 
-  const improved = saveRecord(time, expression);
   game.isSolved = true;
-  setFeedback(improved ? "정답! 이 문제 최고 기록을 세웠어요." : "정답!");
+  setFeedback("정답!");
   renderGame();
   handleCorrectAnswer(time);
 }
@@ -3030,6 +3191,7 @@ function closeSuccessResult() {
 }
 
 function playRewardSound() {
+  if (!soundEnabled) return;
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
 

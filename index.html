@@ -14,7 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=20260609-goal-final1">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260609-room-lifecycle1">
+  <link rel="stylesheet" href="styles.css?v=20260609-settings1">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -38,7 +38,7 @@
           <p class="eyebrow">오늘의 연습</p>
           <h1>주사위 연산</h1>
         </div>
-        <button class="icon-button" type="button" aria-label="설정">⚙</button>
+        <button class="icon-button" type="button" aria-label="설정" data-settings-open>⚙</button>
       </header>
 
       <section class="hero-board" aria-label="주사위판 미리보기">
@@ -89,7 +89,7 @@
           <strong>혼자하기</strong>
         </button>
         <button class="locked-action" id="onlineButton" type="button">
-          <span id="unlockText">정답 37 / 100</span>
+          <span id="unlockText">바로 입장</span>
           <strong>온라인 대전</strong>
           <div class="unlock-bar" aria-label="온라인 대전 해금 진행도">
             <span id="unlockFill"></span>
@@ -129,12 +129,12 @@
 
       <section class="online-hero">
         <div>
-          <span id="onlineStateLabel">100개 달성 후 해금</span>
+          <span id="onlineStateLabel">바로 입장 가능</span>
           <h2>같은 문제, 동시에 시작</h2>
-          <p id="onlineStateCopy">혼자하기를 100개 클리어하면 친구와 4인 대전을 할 수 있어요.</p>
+          <p id="onlineStateCopy">친구와 방 코드로 만나거나 자동매칭으로 바로 대전할 수 있어요.</p>
         </div>
         <div class="online-progress-card">
-          <strong id="onlineProgressCount">37 / 100</strong>
+          <strong id="onlineProgressCount">온라인 준비</strong>
           <div class="unlock-bar" aria-label="온라인 대전 해금 진행도">
             <span id="onlineProgressFill"></span>
           </div>
@@ -347,6 +347,86 @@
       </div>
     </section>
 
+    <section class="settings-sheet" id="settingsSheet" aria-label="설정" hidden>
+      <div class="sheet-backdrop" id="settingsBackdrop"></div>
+      <div class="sheet-panel settings-panel">
+        <div class="sheet-handle"></div>
+        <header class="sheet-header">
+          <div>
+            <span>설정</span>
+            <h2>게임 설정</h2>
+          </div>
+          <button class="sheet-close" id="settingsClose" type="button" aria-label="닫기">×</button>
+        </header>
+
+        <label class="nickname-field settings-nickname-field">
+          <span>닉네임</span>
+          <input id="settingsNicknameInput" maxlength="10" placeholder="예: 연산왕" autocomplete="off">
+        </label>
+        <p class="settings-help" id="settingsNicknameHelp">닉네임은 온라인 대전에서 표시됩니다.</p>
+
+        <div class="settings-row">
+          <div>
+            <strong>효과음</strong>
+            <span>정답과 보상 효과음을 재생합니다.</span>
+          </div>
+          <button class="settings-toggle" id="soundToggleButton" type="button" aria-pressed="true">켜짐</button>
+        </div>
+
+        <details class="settings-details">
+          <summary>게임 설명 / 규칙 보기</summary>
+          <p>검은 주사위 두 개의 합이 목표 숫자입니다. 흰 주사위 5개와 연산자를 모두 활용해 목표값을 만들면 성공입니다.</p>
+          <p>온라인 대전은 같은 문제를 동시에 풀고, 빠르게 맞힌 순서대로 점수를 받습니다. 먼저 목표 점수에 도달하면 게임이 종료됩니다.</p>
+        </details>
+
+        <div class="settings-info-list">
+          <div>
+            <span>문의 / 버그 제보</span>
+            <strong>화면과 상황을 제작자에게 알려주세요.</strong>
+          </div>
+          <div>
+            <span>데이터 안내</span>
+            <strong>익명 로그인, 닉네임, 게임 진행 데이터만 사용합니다.</strong>
+          </div>
+          <div>
+            <span>제작자</span>
+            <strong>CNMMATH</strong>
+          </div>
+          <div>
+            <span>버전</span>
+            <strong id="settingsVersion">20260609-settings1</strong>
+          </div>
+        </div>
+
+        <button class="settings-reset-button" id="resetDataButton" type="button">데이터 초기화</button>
+      </div>
+    </section>
+
+    <section class="online-difficulty-sheet" id="onlineDifficultySheet" aria-label="온라인 난이도 선택" hidden>
+      <div class="sheet-backdrop" id="onlineDifficultyBackdrop"></div>
+      <div class="sheet-panel">
+        <div class="sheet-handle"></div>
+        <header class="sheet-header">
+          <div>
+            <span>온라인 대전</span>
+            <h2>난이도 선택</h2>
+          </div>
+          <button class="sheet-close" id="onlineDifficultyClose" type="button" aria-label="닫기">×</button>
+        </header>
+        <div class="difficulty-cards">
+          <button class="difficulty-card active" type="button" data-online-difficulty="basic">
+            <span>기본</span>
+            <strong>사칙연산</strong>
+          </button>
+          <button class="difficulty-card" type="button" data-online-difficulty="power">
+            <span>도전</span>
+            <strong>지수 포함</strong>
+          </button>
+        </div>
+        <button class="sheet-start" id="onlineDifficultyStart" type="button">온라인 입장</button>
+      </div>
+    </section>
+
     <section class="game-screen screen" id="gameScreen" aria-label="게임 화면">
       <header class="game-header">
         <button class="back-button" id="gameBackButton" type="button">홈</button>
@@ -354,7 +434,7 @@
           <span id="gameDifficultyLabel">사칙연산</span>
           <strong id="gameTimer">00.00</strong>
         </div>
-        <button class="icon-button" type="button" aria-label="설정">⚙</button>
+        <button class="icon-button" type="button" aria-label="설정" data-settings-open>⚙</button>
       </header>
 
       <section class="game-board" aria-label="게임판">
@@ -497,8 +577,8 @@
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=20260609-goal-final1"></script>
-  <script src="firebase-client.js?v=20260609-room-lifecycle1"></script>
-  <script src="app.js?v=20260609-room-lifecycle1"></script>
+  <script src="firebase-config.js?v=20260609-settings1"></script>
+  <script src="firebase-client.js?v=20260609-settings1"></script>
+  <script src="app.js?v=20260609-settings1"></script>
 </body>
 </html>
