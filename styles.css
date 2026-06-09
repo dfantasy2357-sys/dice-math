@@ -878,8 +878,10 @@ button {
 .online-screen.phase-menu .battle-lobby,
 .online-screen.phase-menu .leave-room-button,
 .online-screen.phase-lobby .online-hero,
+.online-screen.phase-lobby .battle-goal-card,
 .online-screen.phase-lobby .online-menu,
 .online-screen.phase-playing .online-hero,
+.online-screen.phase-playing .battle-goal-card,
 .online-screen.phase-playing .online-menu,
 .online-screen.phase-playing .lobby-header,
 .online-screen.phase-playing .battle-rule-note,
@@ -890,6 +892,7 @@ button {
 .online-screen.phase-playing .battle-result-list,
 .online-screen.phase-playing .battle-ad-slot,
 .online-screen.phase-result .online-hero,
+.online-screen.phase-result .battle-goal-card,
 .online-screen.phase-result .online-menu,
 .online-screen.phase-result .battle-rule-note,
 .online-screen.phase-result .player-list,
@@ -1034,6 +1037,41 @@ button {
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
+}
+
+.battle-goal-card {
+  padding: 10px;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.08), 0 8px 18px rgba(23, 32, 51, 0.08);
+}
+
+.battle-goal-card > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.battle-goal-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.battle-goal-options button {
+  height: 38px;
+  border-radius: 8px;
+  background: #eef2f6;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.battle-goal-options button.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 .battle-lobby {
@@ -2595,6 +2633,98 @@ button {
 .result-home {
   background: #eef2f6;
   color: var(--ink);
+}
+
+.battle-final-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 23, 36, 0.62);
+}
+
+.battle-final-modal[hidden] {
+  display: none;
+}
+
+.battle-final-card {
+  width: min(100%, 360px);
+  padding: 22px 18px 18px;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  background: #fff;
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+  animation: reward-pop 220ms ease-out both;
+}
+
+.battle-final-card > span {
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.battle-final-card > strong {
+  color: #101724;
+  font-size: 30px;
+  line-height: 1.05;
+  font-weight: 950;
+}
+
+.battle-final-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.battle-final-card ol {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+  list-style: none;
+}
+
+.battle-final-card li {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  background: #f4f7f8;
+  text-align: left;
+}
+
+.battle-final-card li span,
+.battle-final-card li strong,
+.battle-final-card li em {
+  font-weight: 950;
+}
+
+.battle-final-card li span {
+  color: var(--accent-dark);
+  font-size: 12px;
+}
+
+.battle-final-card li em {
+  color: #3b2a0c;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.battle-final-card button {
+  height: 48px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 950;
 }
 
 .reward-reveal {

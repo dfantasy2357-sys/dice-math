@@ -24,6 +24,7 @@ const joinCodeClose = document.querySelector("#joinCodeClose");
 const joinCodeInput = document.querySelector("#joinCodeInput");
 const joinCodeSubmit = document.querySelector("#joinCodeSubmit");
 const matchSizeButtons = document.querySelectorAll("[data-match-size]");
+const battleGoalButtons = document.querySelectorAll("[data-score-goal]");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
 const playerList = document.querySelector("#playerList");
@@ -42,6 +43,11 @@ const battleResultTitle = document.querySelector("#battleResultTitle");
 const battleResultMeta = document.querySelector("#battleResultMeta");
 const battleResultList = document.querySelector("#battleResultList");
 const battleAdSlot = document.querySelector("#battleAdSlot");
+const battleFinalModal = document.querySelector("#battleFinalModal");
+const battleFinalTitle = document.querySelector("#battleFinalTitle");
+const battleFinalMessage = document.querySelector("#battleFinalMessage");
+const battleFinalList = document.querySelector("#battleFinalList");
+const battleFinalClose = document.querySelector("#battleFinalClose");
 const battleTensDie = document.querySelector("#battleTensDie");
 const battleOnesDie = document.querySelector("#battleOnesDie");
 const battleTargetLabel = document.querySelector("#battleTargetLabel");
@@ -111,9 +117,25 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-match-timer1";
+const APP_BUILD = "20260609-goal-final1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
+const DEFAULT_BATTLE_TARGET_SCORE = 200;
+const MAX_BATTLE_TARGET_SCORE = 500;
+const bannedNicknamePatterns = [
+  /씨\s*발/i,
+  /시\s*발/i,
+  /ㅅ\s*ㅂ/i,
+  /병\s*신/i,
+  /ㅂ\s*ㅅ/i,
+  /개\s*새/i,
+  /새\s*끼/i,
+  /존\s*나/i,
+  /좆/i,
+  /fuck/i,
+  /shit/i,
+  /sex/i,
+];
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -158,12 +180,14 @@ const game = {
 
 let selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
+let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
 let pendingRewardSkin = null;
 let nextId = 0;
 const usedMockRoomCodes = new Set(["A7K2Q9"]);
 const battleState = {
   roomMode: "비공개 친구 방",
   playerCount: 4,
+  targetScore: DEFAULT_BATTLE_TARGET_SCORE,
   round: 0,
   players: [],
   phase: "lobby",
@@ -201,12 +225,15 @@ setTimeout(() => {
 let firebaseInitPromise = initFirebaseConnection();
 renderProgress();
 renderDifficulty();
+renderBattleGoalOptions();
 applySkin(selectedSkin, { closeSheet: false });
 renderGame();
 
 nicknameInput.addEventListener("input", () => {
   const value = nicknameInput.value.trim();
-  nicknamePreview.textContent = value || "닉네임을 정해주세요";
+  nicknamePreview.textContent = value
+    ? getNicknameWarning(value) || value
+    : "닉네임을 정해주세요";
 });
 
 skinButtons.forEach((button) => {
@@ -265,8 +292,16 @@ joinCodeInput.addEventListener("input", () => {
 matchSizeButtons.forEach((button) => {
   button.addEventListener("click", () => joinAutoMatch(Number(button.dataset.matchSize), button));
 });
+battleGoalButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedBattleTargetScore = normalizeBattleTargetScore(button.dataset.scoreGoal);
+    localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
+    renderBattleGoalOptions();
+  });
+});
 onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
 hostControlButton.addEventListener("click", handleHostControl);
+battleFinalClose.addEventListener("click", closeBattleFinalModal);
 sheetBackdrop.addEventListener("click", closeSoloSheet);
 sheetClose.addEventListener("click", closeSoloSheet);
 sheetStart.addEventListener("click", openGameScreen);
@@ -575,6 +610,18 @@ function renderDifficulty() {
   renderInputState();
 }
 
+function normalizeBattleTargetScore(value) {
+  const score = Math.min(MAX_BATTLE_TARGET_SCORE, Math.max(100, Number(value || DEFAULT_BATTLE_TARGET_SCORE)));
+  if ([100, 200, 300, 500].includes(score)) return score;
+  return DEFAULT_BATTLE_TARGET_SCORE;
+}
+
+function renderBattleGoalOptions() {
+  battleGoalButtons.forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.scoreGoal) === selectedBattleTargetScore);
+  });
+}
+
 function openSoloSheet() {
   soloSheet.hidden = false;
 }
@@ -620,6 +667,7 @@ async function createOnlineRoom(mode, playerCount, sourceButton) {
       playerCount,
       nickname: getOnlineNickname(),
       difficulty: selectedDifficulty,
+      targetScore: selectedBattleTargetScore,
     });
     openBattleLobby(mode, playerCount, result.code, {
       firebaseRoomCode: result.code,
@@ -653,6 +701,7 @@ async function joinAutoMatch(playerCount, sourceButton) {
       playerCount,
       nickname: getOnlineNickname(),
       difficulty: selectedDifficulty,
+      targetScore: selectedBattleTargetScore,
     });
     openBattleLobby(mode, playerCount, result.code, {
       firebaseRoomCode: result.code,
@@ -703,7 +752,35 @@ async function joinOnlineRoom(code) {
 }
 
 function getOnlineNickname() {
-  return nicknameInput.value.trim() || "나의 닉네임";
+  const nickname = cleanLocalNickname(nicknameInput.value);
+  if (nicknameInput.value.trim() && nickname === "나의 닉네임") {
+    nicknamePreview.textContent = "사용할 수 없는 닉네임이에요";
+  }
+  return nickname;
+}
+
+function normalizeNicknameText(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/[^\p{L}\p{N}ㄱ-ㅎㅏ-ㅣ가-힣]/gu, "")
+    .toLowerCase();
+}
+
+function isNicknameAllowed(value) {
+  const normalized = normalizeNicknameText(value);
+  if (!normalized) return true;
+  return !bannedNicknamePatterns.some((pattern) => pattern.test(normalized));
+}
+
+function getNicknameWarning(value) {
+  return isNicknameAllowed(value) ? "" : "사용할 수 없는 닉네임이에요";
+}
+
+function cleanLocalNickname(value) {
+  const cleaned = String(value || "").trim().slice(0, 10);
+  if (!cleaned || !isNicknameAllowed(cleaned)) return "나의 닉네임";
+  return cleaned;
 }
 
 function setButtonBusy(button, label) {
@@ -726,6 +803,7 @@ function openOnlineScreen() {
   closeSoloSheet();
   closeJoinCodeSheet();
   closeSuccessResult();
+  battleFinalModal.hidden = true;
   stopTimer();
   clearCountdown();
   clearRoll();
@@ -752,6 +830,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   clearBattleTimers();
   battleState.roomMode = mode;
   battleState.playerCount = playerCount;
+  battleState.targetScore = normalizeBattleTargetScore(options.room?.targetScore || selectedBattleTargetScore);
   battleState.round = 0;
   battleState.players = createMockPlayers(playerCount);
   battleState.phase = "lobby";
@@ -871,6 +950,7 @@ function applyFirebaseRoomSnapshot(room) {
   const isCurrentUserHost = Boolean(currentPlayer?.isHost || room.hostUid === uid);
 
   battleState.roomMode = room.mode || battleState.roomMode;
+  battleState.targetScore = normalizeBattleTargetScore(room.targetScore || battleState.targetScore);
   battleState.firebaseRoomSnapshot = room;
   battleState.playerCount = Number(room.playerCount || battleState.playerCount);
   battleState.round = incomingRound;
@@ -882,6 +962,7 @@ function applyFirebaseRoomSnapshot(room) {
   lobbyModeLabel.textContent = isAutoMatchRoom()
     ? `${battleState.roomMode} · Firebase`
     : `${battleState.roomMode} · Firebase · ${battleState.isHost ? "방장" : "참가자"}`;
+  battleRuleNote.textContent = getBattleRuleNote(battleState.roomMode);
   onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || getOnlineNickname();
   renderLobbyPlayers();
   renderScoreBoard();
@@ -903,6 +984,11 @@ function applyFirebaseRoomSnapshot(room) {
 
   if (room.phase === "result") {
     enterFirebaseResult(room);
+    return;
+  }
+
+  if (room.phase === "final") {
+    enterFirebaseFinal(room);
   }
 }
 
@@ -1431,7 +1517,14 @@ function enterFirebaseResult(room) {
   showFirebaseRoundResult(results.length ? results : createFirebaseRoundResults(room));
 }
 
-function showFirebaseRoundResult(roundResults) {
+function enterFirebaseFinal(room) {
+  const results = getFirebaseStoredRoundResults(room);
+  const standings = getBattleFinalStandings(room.finalResults || room.players);
+  showFirebaseRoundResult(results.length ? results : createFirebaseRoundResults(room), { final: true });
+  showBattleFinalModal(standings, normalizeBattleTargetScore(room.targetScore || battleState.targetScore));
+}
+
+function showFirebaseRoundResult(roundResults, options = {}) {
   if (!battleState.firebaseResultShown) {
     battleState.firebaseResultShown = true;
   }
@@ -1462,7 +1555,57 @@ function showFirebaseRoundResult(roundResults) {
   battleResultList.hidden = false;
   battleAdSlot.hidden = false;
   onlineReadyButton.disabled = true;
+  if (options.final) {
+    clearAutoStartTimers();
+    onlineReadyButton.textContent = "게임 종료";
+    return;
+  }
+
   startFirebaseNextRoundCountdown();
+}
+
+function getBattleFinalStandings(source = battleState.players) {
+  const entries = Array.isArray(source)
+    ? source
+    : Object.entries(source || {}).map(([id, player]) => ({ id, ...player }));
+
+  return entries
+    .map((player) => ({
+      id: String(player.id || ""),
+      name: String(player.name || "이름 없음"),
+      score: Number(player.score || 0),
+      rankLabel: String(player.rankLabel || ""),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((player, index) => ({
+      ...player,
+      rankLabel: player.rankLabel || String(index + 1),
+    }));
+}
+
+function showBattleFinalModal(standings, targetScore = battleState.targetScore) {
+  const winner = standings[0];
+  battleFinalTitle.textContent = winner ? `${winner.name} 우승!` : "축하합니다!";
+  battleFinalMessage.textContent = `${targetScore}점에 먼저 도달해서 게임이 종료되었습니다.`;
+  battleFinalList.replaceChildren(
+    ...standings.map((player) => {
+      const row = document.createElement("li");
+      const rank = document.createElement("span");
+      const name = document.createElement("strong");
+      const score = document.createElement("em");
+      rank.textContent = `${player.rankLabel}위`;
+      name.textContent = player.name;
+      score.textContent = `${player.score}점`;
+      row.append(rank, name, score);
+      return row;
+    })
+  );
+  battleFinalModal.hidden = false;
+}
+
+function closeBattleFinalModal() {
+  battleFinalModal.hidden = true;
+  openOnlineScreen();
 }
 
 async function setCurrentPlayerReady() {
@@ -1485,6 +1628,7 @@ function resetMockBattle() {
   clearRoomSubscription();
   battleState.roomMode = "비공개 친구 방";
   battleState.playerCount = 4;
+  battleState.targetScore = selectedBattleTargetScore;
   battleState.round = 0;
   battleState.players = createMockPlayers(4);
   battleState.phase = "lobby";
@@ -1528,11 +1672,12 @@ function setOnlinePhase(phase) {
 }
 
 function getBattleRuleNote(mode) {
+  const goalText = `${battleState.targetScore || selectedBattleTargetScore}점 먼저 도달`;
   if (mode.includes("자동매칭")) {
-    return "방장 없음 · 중간 참가 없음 · 결과 후 5초 자동 시작 · 나가면 즉시 제외";
+    return `${goalText} · 방장 없음 · 중간 참가 없음 · 결과 후 5초 자동 시작`;
   }
 
-  return "방장 있음 · 진행 중 참가는 다음 라운드부터 · 결과 후 5초 자동 시작 · 일시정지 가능";
+  return `${goalText} · 방장 있음 · 진행 중 참가는 다음 라운드부터 · 자동 시작 일시정지 가능`;
 }
 
 function createMockPlayers(playerCount) {
@@ -1747,6 +1892,13 @@ function showMockBattleResult() {
   battleResultList.hidden = false;
   battleAdSlot.hidden = false;
   onlineReadyButton.disabled = true;
+  if (battleState.players.some((player) => Number(player.score || 0) >= battleState.targetScore)) {
+    clearAutoStartTimers();
+    onlineReadyButton.textContent = "게임 종료";
+    showBattleFinalModal(getBattleFinalStandings(), battleState.targetScore);
+    renderScoreBoard();
+    return;
+  }
   startAutoNextRoundCountdown();
   renderScoreBoard();
 }

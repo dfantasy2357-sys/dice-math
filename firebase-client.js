@@ -12,7 +12,26 @@
   }
 
   function cleanNickname(nickname) {
-    return (nickname || "나의 닉네임").trim().slice(0, 10) || "나의 닉네임";
+    const cleaned = (nickname || "나의 닉네임").trim().slice(0, 10) || "나의 닉네임";
+    const normalized = cleaned
+      .replace(/\s+/g, "")
+      .replace(/[^\p{L}\p{N}ㄱ-ㅎㅏ-ㅣ가-힣]/gu, "")
+      .toLowerCase();
+    const bannedPatterns = [
+      /씨\s*발/i,
+      /시\s*발/i,
+      /ㅅ\s*ㅂ/i,
+      /병\s*신/i,
+      /ㅂ\s*ㅅ/i,
+      /개\s*새/i,
+      /새\s*끼/i,
+      /존\s*나/i,
+      /좆/i,
+      /fuck/i,
+      /shit/i,
+      /sex/i,
+    ];
+    return bannedPatterns.some((pattern) => pattern.test(normalized)) ? "나의 닉네임" : cleaned;
   }
 
   function requireDatabase(client) {
@@ -121,6 +140,7 @@
       nickname,
       matchmaking = false,
       difficulty = "basic",
+      targetScore = 200,
       code: preferredCode = "",
       skipLeaveExistingRooms = false,
     }) {
@@ -142,6 +162,7 @@
           playerCount,
           matchmaking: Boolean(matchmaking),
           difficulty: difficulty === "power" ? "power" : "basic",
+          targetScore: Math.min(500, Math.max(100, Number(targetScore || 200))),
           phase: "lobby",
           round: 0,
           hostUid: uid,
@@ -177,18 +198,19 @@
 
       throw Object.assign(new Error("중복되지 않는 방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
     },
-    async findOrCreateMatch({ playerCount, nickname, difficulty = "basic" }) {
+    async findOrCreateMatch({ playerCount, nickname, difficulty = "basic", targetScore = 200 }) {
       requireDatabase(this);
 
       const size = Number(playerCount || 2);
       const mode = `${size}인 자동매칭`;
       const roomDifficulty = difficulty === "power" ? "power" : "basic";
+      const scoreGoal = Math.min(500, Math.max(100, Number(targetScore || 200)));
       const uid = this.getUid();
 
       await this.leaveExistingRooms();
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const queueRef = this.database.ref(`matchQueues/${size}`);
+        const queueRef = this.database.ref(`matchQueues/${size}/${scoreGoal}`);
         const reservedAt = Date.now();
         const newCode = createRoomCode();
         const result = await queueRef.transaction((queue) => {
@@ -196,7 +218,10 @@
           const joinedPlayers = { ...players, [uid]: true };
           const joinedCount = Object.keys(joinedPlayers).length;
 
-          if (queue?.roomCode && Number(queue.playerCount || 0) === size && joinedCount <= size) {
+          if (queue?.roomCode
+            && Number(queue.playerCount || 0) === size
+            && Number(queue.targetScore || scoreGoal) === scoreGoal
+            && joinedCount <= size) {
             return {
               ...queue,
               players: joinedPlayers,
@@ -210,6 +235,7 @@
             mode,
             playerCount: size,
             difficulty: roomDifficulty,
+            targetScore: scoreGoal,
             creatorUid: uid,
             players: { [uid]: true },
             count: 1,
@@ -230,6 +256,7 @@
               nickname,
               matchmaking: true,
               difficulty: roomDifficulty,
+              targetScore: scoreGoal,
               code,
               skipLeaveExistingRooms: true,
             })
@@ -459,7 +486,7 @@
         const roomRound = Number(room.round || 0);
 
         if (!isHost || roomRound !== normalizedRound) return room;
-        if (room.phase === "result" && Number(room.resultRound || 0) === roomRound) return room;
+        if ((room.phase === "result" || room.phase === "final") && Number(room.resultRound || 0) === roomRound) return room;
 
         const nextPlayers = { ...players };
         resultList.forEach((result) => {
@@ -471,11 +498,25 @@
             ready: false,
           };
         });
+        const targetScore = Math.min(500, Math.max(100, Number(room.targetScore || 200)));
+        const finalResults = Object.entries(nextPlayers)
+          .map(([playerUid, player]) => ({
+            id: playerUid,
+            name: String(player.name || "이름 없음"),
+            score: Number(player.score || 0),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .map((player, index) => ({
+            ...player,
+            rankLabel: String(index + 1),
+          }));
+        const isFinal = finalResults.some((player) => player.score >= targetScore);
 
         return {
           ...room,
           players: nextPlayers,
-          phase: "result",
+          targetScore,
+          phase: isFinal ? "final" : "result",
           resultRound: roomRound,
           roundResults: resultList.map((result) => ({
             id: String(result.id || ""),
@@ -487,6 +528,7 @@
             points: Number(result.points || 0),
             timeLabel: String(result.timeLabel || ""),
           })),
+          finalResults: isFinal ? finalResults : null,
           resultAt: now,
           updatedAt: now,
         };
@@ -655,17 +697,19 @@
 
       const matchQueuesSnapshot = await this.database.ref("matchQueues").once("value");
       const matchQueues = matchQueuesSnapshot.val() || {};
-      Object.entries(matchQueues).forEach(([size, queue]) => {
-        const code = String(queue?.roomCode || "").toUpperCase();
-        const room = rooms[code];
-        const players = room?.players || {};
-        const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
-        const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
-        const isInvalidQueue = !room || room.phase !== "lobby" || Object.keys(players).length >= Number(room.playerCount || size || 0);
-        if (isOldQueue || isInvalidQueue) {
-          updates[`matchQueues/${size}`] = null;
-          removedCount += 1;
-        }
+      Object.entries(matchQueues).forEach(([size, scoreQueues]) => {
+        Object.entries(scoreQueues || {}).forEach(([scoreGoal, queue]) => {
+          const code = String(queue?.roomCode || "").toUpperCase();
+          const room = rooms[code];
+          const players = room?.players || {};
+          const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
+          const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
+          const isInvalidQueue = !room || room.phase !== "lobby" || Object.keys(players).length >= Number(room.playerCount || size || 0);
+          if (isOldQueue || isInvalidQueue) {
+            updates[`matchQueues/${size}/${scoreGoal}`] = null;
+            removedCount += 1;
+          }
+        });
       });
 
       if (removedCount > 0) {

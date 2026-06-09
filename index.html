@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260609-match-timer1">
+  <link rel="manifest" href="manifest.webmanifest?v=20260609-goal-final1">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260609-match-timer1">
+  <link rel="stylesheet" href="styles.css?v=20260609-goal-final1">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -142,6 +142,16 @@
         </div>
       </section>
 
+      <section class="battle-goal-card" aria-label="온라인 목표 점수">
+        <span>목표 점수</span>
+        <div class="battle-goal-options" id="battleGoalOptions">
+          <button type="button" data-score-goal="100">100점</button>
+          <button class="active" type="button" data-score-goal="200">200점</button>
+          <button type="button" data-score-goal="300">300점</button>
+          <button type="button" data-score-goal="500">500점</button>
+        </div>
+      </section>
+
       <section class="online-menu" aria-label="온라인 대전 메뉴">
         <button id="createRoomButton" type="button">
           <strong>방 만들기</strong>
@@ -254,6 +264,16 @@
           <span>광고</span>
           <img src="ad-banner.jpg?v=20260605-rules1" alt="광고 배너">
         </aside>
+      </section>
+
+      <section class="battle-final-modal" id="battleFinalModal" aria-label="최종 결과" hidden>
+        <div class="battle-final-card">
+          <span>게임 종료</span>
+          <strong id="battleFinalTitle">축하합니다!</strong>
+          <p id="battleFinalMessage">200점에 먼저 도달했어요.</p>
+          <ol id="battleFinalList"></ol>
+          <button id="battleFinalClose" type="button">온라인 메뉴로</button>
+        </div>
       </section>
     </section>
 
@@ -477,8 +497,8 @@
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=20260609-match-timer1"></script>
-  <script src="firebase-client.js?v=20260609-match-timer1"></script>
-  <script src="app.js?v=20260609-match-timer1"></script>
+  <script src="firebase-config.js?v=20260609-goal-final1"></script>
+  <script src="firebase-client.js?v=20260609-goal-final1"></script>
+  <script src="app.js?v=20260609-goal-final1"></script>
 </body>
 </html>
