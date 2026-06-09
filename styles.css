@@ -1170,6 +1170,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   background: rgba(0, 0, 0, 0.16);
 }
 
@@ -1189,6 +1190,15 @@ button {
   font-size: 18px;
   font-weight: 950;
   font-variant-numeric: tabular-nums;
+}
+
+.battle-time-row .battle-room-code {
+  min-width: 96px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 13px;
+  letter-spacing: 0;
 }
 
 .battle-play-layout {

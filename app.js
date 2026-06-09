@@ -34,6 +34,7 @@ const scoreBoard = document.querySelector("#scoreBoard");
 const onlineReadyButton = document.querySelector("#onlineReadyButton");
 const hostControlButton = document.querySelector("#hostControlButton");
 const battleRoundPanel = document.querySelector("#battleRoundPanel");
+const battleRoomCode = document.querySelector("#battleRoomCode");
 const battleElapsed = document.querySelector("#battleElapsed");
 const battleStatusList = document.querySelector("#battleStatusList");
 const battleResultSummary = document.querySelector("#battleResultSummary");
@@ -111,7 +112,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase13";
+const APP_BUILD = "20260608-firebase14";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -606,6 +607,7 @@ async function createOnlineRoom(mode, playerCount, sourceButton) {
       mode,
       playerCount,
       nickname: getOnlineNickname(),
+      difficulty: selectedDifficulty,
     });
     openBattleLobby(mode, playerCount, result.code, {
       firebaseRoomCode: result.code,
@@ -638,6 +640,7 @@ async function joinAutoMatch(playerCount, sourceButton) {
     const result = await window.diceFirebase.findOrCreateMatch({
       playerCount,
       nickname: getOnlineNickname(),
+      difficulty: selectedDifficulty,
     });
     openBattleLobby(mode, playerCount, result.code, {
       firebaseRoomCode: result.code,
@@ -741,6 +744,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleState.firebaseResultRound = null;
   battleState.firebaseAutoStartKey = null;
   roomCodeLabel.textContent = roomCode;
+  updateBattleRoomCode(roomCode);
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
   battleRuleNote.textContent = getBattleRuleNote(mode);
   if (options.room) applyFirebaseRoomSnapshot(options.room);
@@ -847,6 +851,7 @@ function applyFirebaseRoomSnapshot(room) {
   battleState.players = players.length ? players : battleState.players;
   battleState.isHost = isCurrentUserHost;
   battleState.autoStartPaused = Boolean(room.autoStartPaused);
+  applyOnlineDifficulty(room.difficulty);
 
   lobbyModeLabel.textContent = isAutoMatchRoom()
     ? `${battleState.roomMode} · Firebase`
@@ -873,6 +878,13 @@ function applyFirebaseRoomSnapshot(room) {
   if (room.phase === "result") {
     enterFirebaseResult(room);
   }
+}
+
+function applyOnlineDifficulty(difficulty) {
+  const nextDifficulty = difficulty === "power" ? "power" : "basic";
+  if (selectedDifficulty === nextDifficulty) return;
+  selectedDifficulty = nextDifficulty;
+  renderDifficulty();
 }
 
 function renderLobbyPlayers() {
@@ -905,6 +917,7 @@ function enterFirebaseNextRoundWaiting(room) {
   battleResultList.replaceChildren();
   battleAdSlot.hidden = true;
   lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드 진행 중`;
+  updateBattleRoomCode(room.code || battleState.firebaseRoomCode);
   battleRuleNote.textContent = "이미 시작된 라운드라서 다음 문제부터 참가합니다.";
   onlineReadyButton.disabled = true;
   onlineReadyButton.textContent = "다음 라운드 대기";
@@ -1039,6 +1052,7 @@ function enterFirebaseRound(room) {
   battleCountdownLayer.hidden = true;
   battleElapsed.textContent = "00.00";
   lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드`;
+  updateBattleRoomCode(room.code || battleState.firebaseRoomCode);
   if (room.currentProblem) {
     prepareHiddenFirebaseProblem(room.currentProblem);
     beginFirebaseRevealCountdown(room.currentProblem);
@@ -1411,6 +1425,11 @@ function createRoomCode() {
   } while (usedMockRoomCodes.has(code));
   usedMockRoomCodes.add(code);
   return code;
+}
+
+function updateBattleRoomCode(code = battleState.firebaseRoomCode || roomCodeLabel.textContent) {
+  if (!battleRoomCode) return;
+  battleRoomCode.textContent = `코드 ${String(code || "------").toUpperCase()}`;
 }
 
 function clearBattleTimers() {

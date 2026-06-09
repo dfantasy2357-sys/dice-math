@@ -59,7 +59,7 @@
     getDatabase() {
       return this.database;
     },
-    async createRoom({ mode, playerCount, nickname, matchmaking = false }) {
+    async createRoom({ mode, playerCount, nickname, matchmaking = false, difficulty = "basic" }) {
       requireDatabase(this);
 
       const uid = this.getUid();
@@ -73,6 +73,7 @@
           mode,
           playerCount,
           matchmaking: Boolean(matchmaking),
+          difficulty: difficulty === "power" ? "power" : "basic",
           phase: "lobby",
           round: 0,
           hostUid: uid,
@@ -106,16 +107,18 @@
 
       throw Object.assign(new Error("중복되지 않는 방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
     },
-    async findOrCreateMatch({ playerCount, nickname }) {
+    async findOrCreateMatch({ playerCount, nickname, difficulty = "basic" }) {
       requireDatabase(this);
 
       const mode = `${Number(playerCount || 2)}인 자동매칭`;
+      const roomDifficulty = difficulty === "power" ? "power" : "basic";
       const roomsSnapshot = await this.database.ref("rooms").once("value");
       const rooms = roomsSnapshot.val() || {};
       const waitingRoom = Object.entries(rooms).find(([, room]) => {
         const roomPlayers = room.players || {};
         return room.matchmaking === true
           && room.mode === mode
+          && (room.difficulty || "basic") === roomDifficulty
           && room.phase === "lobby"
           && Number(room.playerCount || 0) === Number(playerCount)
           && Object.keys(roomPlayers).length < Number(playerCount);
@@ -130,6 +133,7 @@
         playerCount: Number(playerCount),
         nickname,
         matchmaking: true,
+        difficulty: roomDifficulty,
       });
     },
     async joinRoom(code, { nickname }) {
@@ -399,6 +403,40 @@
 
       const leavingPlayer = room.players?.[uid] || {};
       const isHost = room.hostUid === uid || leavingPlayer.isHost === true;
+      const isAutoMatch = room.matchmaking === true || String(room.mode || "").includes("자동매칭");
+      const remainingPlayers = { ...(room.players || {}) };
+      delete remainingPlayers[uid];
+      const remainingPlayerIds = Object.keys(remainingPlayers);
+
+      if (isAutoMatch) {
+        if (remainingPlayerIds.length <= 1) {
+          const updates = {
+            [`rooms/${normalizedCode}`]: null,
+          };
+          remainingPlayerIds.forEach((playerUid) => {
+            updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
+          });
+          await this.database.ref().update(updates);
+          const deletedSnapshot = await roomRef.once("value");
+          return { removedRoom: !deletedSnapshot.exists() };
+        }
+
+        const nextHostUid = remainingPlayers[room.hostUid]
+          ? room.hostUid
+          : remainingPlayerIds
+            .sort((a, b) => Number(remainingPlayers[a]?.joinedAt || 0) - Number(remainingPlayers[b]?.joinedAt || 0))[0];
+        const updates = {
+          [`players/${uid}`]: null,
+          hostUid: nextHostUid,
+          updatedAt: window.firebase.database.ServerValue.TIMESTAMP,
+        };
+        remainingPlayerIds.forEach((playerUid) => {
+          updates[`players/${playerUid}/isHost`] = playerUid === nextHostUid;
+        });
+
+        await roomRef.update(updates);
+        return { removedRoom: false };
+      }
 
       if (isHost) {
         await roomRef.remove();
@@ -408,9 +446,9 @@
 
       await roomRef.child(`players/${uid}`).remove();
       const remainingPlayersSnapshot = await roomRef.child("players").once("value");
-      const remainingPlayers = remainingPlayersSnapshot.val() || {};
+      const latestRemainingPlayers = remainingPlayersSnapshot.val() || {};
 
-      if (Object.keys(remainingPlayers).length === 0) {
+      if (Object.keys(latestRemainingPlayers).length === 0) {
         await roomRef.remove();
         const deletedSnapshot = await roomRef.once("value");
         return { removedRoom: !deletedSnapshot.exists() };
