@@ -115,16 +115,26 @@
 
       return { leftCount };
     },
-    async createRoom({ mode, playerCount, nickname, matchmaking = false, difficulty = "basic" }) {
+    async createRoom({
+      mode,
+      playerCount,
+      nickname,
+      matchmaking = false,
+      difficulty = "basic",
+      code: preferredCode = "",
+      skipLeaveExistingRooms = false,
+    }) {
       requireDatabase(this);
 
       const uid = this.getUid();
       const now = window.firebase.database.ServerValue.TIMESTAMP;
 
-      await this.leaveExistingRooms();
+      if (!skipLeaveExistingRooms) {
+        await this.leaveExistingRooms();
+      }
 
       for (let attempt = 0; attempt < 14; attempt += 1) {
-        const code = createRoomCode();
+        const code = preferredCode || createRoomCode();
         const roomRef = this.database.ref(`rooms/${code}`);
         const roomPayload = {
           code,
@@ -161,6 +171,8 @@
           await this.database.ref(`userRooms/${uid}/${code}`).set({ role: "host", joinedAt: now });
           return { code, room: result.snapshot.val() };
         }
+
+        if (preferredCode) break;
       }
 
       throw Object.assign(new Error("중복되지 않는 방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
@@ -168,33 +180,92 @@
     async findOrCreateMatch({ playerCount, nickname, difficulty = "basic" }) {
       requireDatabase(this);
 
-      const mode = `${Number(playerCount || 2)}인 자동매칭`;
+      const size = Number(playerCount || 2);
+      const mode = `${size}인 자동매칭`;
       const roomDifficulty = difficulty === "power" ? "power" : "basic";
-      const roomsSnapshot = await this.database.ref("rooms").once("value");
-      const rooms = roomsSnapshot.val() || {};
-      const waitingRoom = Object.entries(rooms).find(([, room]) => {
-        const roomPlayers = room.players || {};
-        return room.matchmaking === true
-          && room.mode === mode
-          && (room.difficulty || "basic") === roomDifficulty
-          && room.phase === "lobby"
-          && Number(room.playerCount || 0) === Number(playerCount)
-          && Object.keys(roomPlayers).length < Number(playerCount);
-      });
+      const uid = this.getUid();
 
-      if (waitingRoom) {
-        return this.joinRoom(waitingRoom[0], { nickname });
+      await this.leaveExistingRooms();
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const queueRef = this.database.ref(`matchQueues/${size}`);
+        const reservedAt = Date.now();
+        const newCode = createRoomCode();
+        const result = await queueRef.transaction((queue) => {
+          const players = queue?.players || {};
+          const joinedPlayers = { ...players, [uid]: true };
+          const joinedCount = Object.keys(joinedPlayers).length;
+
+          if (queue?.roomCode && Number(queue.playerCount || 0) === size && joinedCount <= size) {
+            return {
+              ...queue,
+              players: joinedPlayers,
+              count: joinedCount,
+              updatedAt: reservedAt,
+            };
+          }
+
+          return {
+            roomCode: newCode,
+            mode,
+            playerCount: size,
+            difficulty: roomDifficulty,
+            creatorUid: uid,
+            players: { [uid]: true },
+            count: 1,
+            createdAt: reservedAt,
+            updatedAt: reservedAt,
+          };
+        });
+
+        const queue = result.snapshot.val() || {};
+        const code = String(queue.roomCode || "").toUpperCase();
+        const isCreator = queue.creatorUid === uid && code === newCode;
+
+        try {
+          const matchResult = isCreator
+            ? await this.createRoom({
+              mode,
+              playerCount: size,
+              nickname,
+              matchmaking: true,
+              difficulty: roomDifficulty,
+              code,
+              skipLeaveExistingRooms: true,
+            })
+            : await this.joinQueuedMatchRoom(code, { nickname });
+
+          const playerTotal = Object.keys(matchResult.room?.players || {}).length;
+          if (playerTotal >= size) {
+            await queueRef.transaction((currentQueue) => (
+              currentQueue?.roomCode === code ? null : currentQueue
+            ));
+          }
+
+          return matchResult;
+        } catch (error) {
+          await queueRef.transaction((currentQueue) => (
+            currentQueue?.roomCode === code ? null : currentQueue
+          ));
+          if (attempt === 4) throw error;
+        }
       }
 
-      return this.createRoom({
-        mode,
-        playerCount: Number(playerCount),
-        nickname,
-        matchmaking: true,
-        difficulty: roomDifficulty,
-      });
+      throw Object.assign(new Error("자동매칭 대기방을 만들지 못했습니다."), { code: "matchmaking-failed" });
     },
-    async joinRoom(code, { nickname }) {
+    async joinQueuedMatchRoom(code, { nickname }) {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        try {
+          return await this.joinRoom(code, { nickname, skipLeaveExistingRooms: true });
+        } catch (error) {
+          if (error.code !== "room-not-found" || attempt === 7) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 180));
+        }
+      }
+
+      throw Object.assign(new Error("자동매칭 방을 찾을 수 없습니다."), { code: "room-not-found" });
+    },
+    async joinRoom(code, { nickname, skipLeaveExistingRooms = false } = {}) {
       requireDatabase(this);
 
       const normalizedCode = String(code || "").trim().toUpperCase();
@@ -207,7 +278,9 @@
 
       const room = snapshot.val();
       const uid = this.getUid();
-      await this.leaveExistingRooms({ exceptCode: normalizedCode });
+      if (!skipLeaveExistingRooms) {
+        await this.leaveExistingRooms({ exceptCode: normalizedCode });
+      }
       const players = room.players || {};
       const alreadyJoined = Boolean(players[uid]);
       const playerCount = Object.keys(players).length;
@@ -578,6 +651,21 @@
             removedCount += 1;
           }
         });
+      });
+
+      const matchQueuesSnapshot = await this.database.ref("matchQueues").once("value");
+      const matchQueues = matchQueuesSnapshot.val() || {};
+      Object.entries(matchQueues).forEach(([size, queue]) => {
+        const code = String(queue?.roomCode || "").toUpperCase();
+        const room = rooms[code];
+        const players = room?.players || {};
+        const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
+        const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
+        const isInvalidQueue = !room || room.phase !== "lobby" || Object.keys(players).length >= Number(room.playerCount || size || 0);
+        if (isOldQueue || isInvalidQueue) {
+          updates[`matchQueues/${size}`] = null;
+          removedCount += 1;
+        }
       });
 
       if (removedCount > 0) {

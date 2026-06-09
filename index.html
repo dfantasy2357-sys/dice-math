@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260609-server-time1">
+  <link rel="manifest" href="manifest.webmanifest?v=20260609-match-timer1">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260609-server-time1">
+  <link rel="stylesheet" href="styles.css?v=20260609-match-timer1">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -145,7 +145,7 @@
       <section class="online-menu" aria-label="온라인 대전 메뉴">
         <button id="createRoomButton" type="button">
           <strong>방 만들기</strong>
-          <span>친구 초대용 코드 생성</span>
+          <span>방 코드 생성</span>
         </button>
         <button id="joinRoomButton" type="button">
           <strong>코드 참가</strong>
@@ -162,10 +162,6 @@
         <button class="match-size-button" type="button" data-match-size="4">
           <strong>4인 자동매칭</strong>
           <span>최대 인원 승부</span>
-        </button>
-        <button id="friendInviteButton" type="button">
-          <strong>친구 초대</strong>
-          <span>비공개 방으로 초대</span>
         </button>
       </section>
 
@@ -481,8 +477,8 @@
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=20260609-server-time1"></script>
-  <script src="firebase-client.js?v=20260609-server-time1"></script>
-  <script src="app.js?v=20260609-server-time1"></script>
+  <script src="firebase-config.js?v=20260609-match-timer1"></script>
+  <script src="firebase-client.js?v=20260609-match-timer1"></script>
+  <script src="app.js?v=20260609-match-timer1"></script>
 </body>
 </html>

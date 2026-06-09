@@ -24,7 +24,6 @@ const joinCodeClose = document.querySelector("#joinCodeClose");
 const joinCodeInput = document.querySelector("#joinCodeInput");
 const joinCodeSubmit = document.querySelector("#joinCodeSubmit");
 const matchSizeButtons = document.querySelectorAll("[data-match-size]");
-const friendInviteButton = document.querySelector("#friendInviteButton");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
 const playerList = document.querySelector("#playerList");
@@ -112,7 +111,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-server-time1";
+const APP_BUILD = "20260609-match-timer1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
 const skinClasses = [
@@ -266,7 +265,6 @@ joinCodeInput.addEventListener("input", () => {
 matchSizeButtons.forEach((button) => {
   button.addEventListener("click", () => joinAutoMatch(Number(button.dataset.matchSize), button));
 });
-friendInviteButton.addEventListener("click", () => createOnlineRoom("친구 초대 방", 4, friendInviteButton));
 onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
 hostControlButton.addEventListener("click", handleHostControl);
 sheetBackdrop.addEventListener("click", closeSoloSheet);
@@ -1096,7 +1094,7 @@ function startFirebaseRoundClock(room) {
 
   const updateClock = () => {
     const elapsed = getFirebaseRoundElapsedMs();
-    battleElapsed.textContent = formatTime(elapsed);
+    updateBattleElapsed(elapsed);
     if (elapsed >= BATTLE_TIME_LIMIT_MS) {
       maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
       handleFirebaseRoundTimeout();
@@ -1111,7 +1109,7 @@ function startFirebaseRoundClock(room) {
 function syncFirebaseRoundClock() {
   if (battleState.phase !== "playing" || !battleState.firebaseRoomCode || !battleState.firebaseSolveStartedAt) return;
   const elapsed = getFirebaseRoundElapsedMs();
-  battleElapsed.textContent = formatTime(elapsed);
+  updateBattleElapsed(elapsed);
   if (elapsed >= BATTLE_TIME_LIMIT_MS) {
     maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
     handleFirebaseRoundTimeout();
@@ -1264,11 +1262,24 @@ async function handleFirebaseRoundTimeout() {
 function setBattleInputEnabled(enabled) {
   const shouldEnable = enabled && !game.isSolved;
   battleAnswerCheckButton.disabled = !shouldEnable;
+  if (shouldEnable) {
+    battleAnswerCheckButton.textContent = "제출";
+    battleAnswerCheckButton.classList.remove("submitted");
+  } else if (!game.isSolved) {
+    battleAnswerCheckButton.textContent = "제출";
+    battleAnswerCheckButton.classList.remove("submitted");
+  }
   battleClearExpressionButton.disabled = !shouldEnable;
   battleUndoButton.disabled = !shouldEnable;
   document.querySelectorAll(".battle-operator-bar button").forEach((button) => {
     button.disabled = !shouldEnable;
   });
+}
+
+function markBattleAnswerSubmitted() {
+  battleAnswerCheckButton.disabled = true;
+  battleAnswerCheckButton.textContent = "정답";
+  battleAnswerCheckButton.classList.add("submitted");
 }
 
 function stopBattleRoundTimerAt(time) {
@@ -1280,7 +1291,7 @@ function stopBattleRoundTimerAt(time) {
     clearTimeout(battleState.roundEndTimerId);
     battleState.roundEndTimerId = null;
   }
-  battleElapsed.textContent = formatTime(time);
+  updateBattleElapsed(time);
 }
 
 function handleFirebaseRoundCompletion(room) {
@@ -1641,7 +1652,7 @@ function revealBattleRound() {
   renderGame();
 
   battleState.roundTimerId = window.setInterval(() => {
-    battleElapsed.textContent = formatTime(performance.now() - battleState.roundStartedAt);
+    updateBattleElapsed(performance.now() - battleState.roundStartedAt);
   }, 47);
 
   battleState.statusTimerIds = battleState.players.slice(1).map((player, index) => (
@@ -1658,15 +1669,13 @@ function renderBattleStatuses(statusMap = {}) {
       const avatar = document.createElement("span");
       const name = document.createElement("strong");
       const score = document.createElement("em");
-      const state = document.createElement("span");
       avatar.className = "party-avatar";
-      avatar.textContent = index === 0 ? "나" : String(index + 1);
+      avatar.textContent = status;
       name.textContent = player.name;
       score.textContent = `${Number(player.score || 0)}점`;
-      state.textContent = status;
       row.className = "party-member";
       row.dataset.status = status;
-      row.append(avatar, name, state, score);
+      row.append(avatar, name, score);
       return row;
     })
   );
@@ -2527,6 +2536,7 @@ async function handleBattleCorrectAnswer(time, expression) {
   });
   battleState.statusMap[me.id] = "완료";
   game.isSolved = true;
+  markBattleAnswerSubmitted();
   stopBattleRoundTimerAt(time);
   setFeedback("제출 완료! 다른 사람의 식은 라운드 종료 후 공개됩니다.");
   renderGame();
@@ -2761,6 +2771,16 @@ function updateTimer() {
 
 function formatTime(ms) {
   return (ms / 1000).toFixed(2).padStart(5, "0");
+}
+
+function formatBattleClock(ms) {
+  return `${Math.floor(Math.max(0, ms) / 1000)}초`;
+}
+
+function updateBattleElapsed(time) {
+  battleElapsed.textContent = battleState.firebaseRoomCode
+    ? formatBattleClock(time)
+    : formatTime(time);
 }
 
 function trimNumber(value) {
