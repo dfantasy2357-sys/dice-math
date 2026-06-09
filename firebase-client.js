@@ -207,6 +207,7 @@
       const scoreGoal = Math.min(500, Math.max(100, Number(targetScore || 200)));
       const uid = this.getUid();
 
+      await this.cleanupStaleRooms({ soloLobbyMaxAgeMs: 2 * 60 * 1000 });
       await this.leaveExistingRooms();
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -605,12 +606,39 @@
       const remainingPlayers = { ...(room.players || {}) };
       delete remainingPlayers[uid];
       const remainingPlayerIds = Object.keys(remainingPlayers);
+      const roomPhase = room.phase || "lobby";
+      const roomPlayerCount = Math.min(4, Math.max(2, Number(room.playerCount || 2)));
+      const roomTargetScore = Math.min(500, Math.max(100, Number(room.targetScore || 200)));
+      const queuePath = isAutoMatch ? `matchQueues/${roomPlayerCount}/${roomTargetScore}` : "";
+      const queueSnapshot = queuePath ? await this.database.ref(queuePath).once("value") : null;
+      const queue = queueSnapshot?.val() || {};
+      const queueMatchesRoom = queuePath && String(queue.roomCode || "").toUpperCase() === normalizedCode;
+
+      if (roomPhase === "final") {
+        const updates = {
+          [`rooms/${normalizedCode}`]: null,
+        };
+        if (queueMatchesRoom) {
+          updates[queuePath] = null;
+        }
+        remainingPlayerIds.forEach((playerUid) => {
+          updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
+        });
+        await this.database.ref().update(updates);
+        const deletedSnapshot = await roomRef.once("value");
+        return { removedRoom: !deletedSnapshot.exists() };
+      }
 
       if (isAutoMatch) {
-        if (remainingPlayerIds.length <= 1) {
+        const shouldDeleteAutoRoom = remainingPlayerIds.length === 0
+          || (remainingPlayerIds.length <= 1 && roomPhase !== "lobby");
+        if (shouldDeleteAutoRoom) {
           const updates = {
             [`rooms/${normalizedCode}`]: null,
           };
+          if (queueMatchesRoom) {
+            updates[queuePath] = null;
+          }
           remainingPlayerIds.forEach((playerUid) => {
             updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
           });
@@ -624,19 +652,40 @@
           : remainingPlayerIds
             .sort((a, b) => Number(remainingPlayers[a]?.joinedAt || 0) - Number(remainingPlayers[b]?.joinedAt || 0))[0];
         const updates = {
-          [`players/${uid}`]: null,
-          hostUid: nextHostUid,
-          updatedAt: window.firebase.database.ServerValue.TIMESTAMP,
+          [`rooms/${normalizedCode}/players/${uid}`]: null,
+          [`rooms/${normalizedCode}/hostUid`]: nextHostUid,
+          [`rooms/${normalizedCode}/phase`]: roomPhase === "lobby" ? "lobby" : room.phase,
+          [`rooms/${normalizedCode}/updatedAt`]: window.firebase.database.ServerValue.TIMESTAMP,
         };
+        if (queueMatchesRoom) {
+          updates[`${queuePath}/players/${uid}`] = null;
+          updates[`${queuePath}/count`] = remainingPlayerIds.length;
+          updates[`${queuePath}/updatedAt`] = window.firebase.database.ServerValue.TIMESTAMP;
+        }
         remainingPlayerIds.forEach((playerUid) => {
-          updates[`players/${playerUid}/isHost`] = playerUid === nextHostUid;
+          updates[`rooms/${normalizedCode}/players/${playerUid}/isHost`] = playerUid === nextHostUid;
         });
 
-        await roomRef.update(updates);
+        await this.database.ref().update(updates);
         return { removedRoom: false };
       }
 
       if (isHost) {
+        if (roomPhase === "lobby" && remainingPlayerIds.length > 0) {
+          const nextHostUid = remainingPlayerIds
+            .sort((a, b) => Number(remainingPlayers[a]?.joinedAt || 0) - Number(remainingPlayers[b]?.joinedAt || 0))[0];
+          const updates = {
+            [`rooms/${normalizedCode}/players/${uid}`]: null,
+            [`rooms/${normalizedCode}/hostUid`]: nextHostUid,
+            [`rooms/${normalizedCode}/updatedAt`]: window.firebase.database.ServerValue.TIMESTAMP,
+          };
+          remainingPlayerIds.forEach((playerUid) => {
+            updates[`rooms/${normalizedCode}/players/${playerUid}/isHost`] = playerUid === nextHostUid;
+          });
+          await this.database.ref().update(updates);
+          return { removedRoom: false };
+        }
+
         await roomRef.remove();
         const deletedSnapshot = await roomRef.once("value");
         return { removedRoom: !deletedSnapshot.exists() };
@@ -655,7 +704,7 @@
       await roomRef.update({ updatedAt: window.firebase.database.ServerValue.TIMESTAMP });
       return { removedRoom: false };
     },
-    async cleanupStaleRooms({ maxAgeMs = 60 * 60 * 1000 } = {}) {
+    async cleanupStaleRooms({ maxAgeMs = 60 * 60 * 1000, soloLobbyMaxAgeMs = 2 * 60 * 1000 } = {}) {
       requireDatabase(this);
 
       const now = Date.now();
@@ -671,8 +720,12 @@
         const updatedAt = Number(room.updatedAt || room.createdAt || 0);
         const isOld = updatedAt > 0 && now - updatedAt > maxAgeMs;
         const isEmpty = playerCount === 0;
+        const isExpiredSoloLobby = room.phase === "lobby"
+          && playerCount === 1
+          && updatedAt > 0
+          && now - updatedAt > soloLobbyMaxAgeMs;
 
-        if (isEmpty || isOld) {
+        if (isEmpty || isOld || isExpiredSoloLobby) {
           updates[`rooms/${code}`] = null;
           removedCount += 1;
 
@@ -704,7 +757,10 @@
           const players = room?.players || {};
           const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
           const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
-          const isInvalidQueue = !room || room.phase !== "lobby" || Object.keys(players).length >= Number(room.playerCount || size || 0);
+          const isInvalidQueue = updates[`rooms/${code}`] === null
+            || !room
+            || room.phase !== "lobby"
+            || Object.keys(players).length >= Number(room.playerCount || size || 0);
           if (isOldQueue || isInvalidQueue) {
             updates[`matchQueues/${size}/${scoreGoal}`] = null;
             removedCount += 1;

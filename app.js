@@ -117,8 +117,9 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-goal-final1";
+const APP_BUILD = "20260609-room-lifecycle1";
 const BATTLE_TIME_LIMIT_MS = 120000;
+const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
 const DEFAULT_BATTLE_TARGET_SCORE = 200;
 const MAX_BATTLE_TARGET_SCORE = 500;
@@ -201,6 +202,8 @@ const battleState = {
   countdownTimerId: null,
   autoStartTimerId: null,
   autoStartIntervalId: null,
+  soloLobbyTimerId: null,
+  soloLobbyDeadline: null,
   statusTimerIds: [],
   statusMap: {},
   submissions: [],
@@ -906,9 +909,44 @@ function subscribeToFirebaseRoom(roomCode) {
 }
 
 function clearRoomSubscription() {
+  clearSoloLobbyWaitTimer();
   if (!battleState.roomUnsubscribe) return;
   battleState.roomUnsubscribe();
   battleState.roomUnsubscribe = null;
+}
+
+function clearSoloLobbyWaitTimer() {
+  if (battleState.soloLobbyTimerId) {
+    clearTimeout(battleState.soloLobbyTimerId);
+    battleState.soloLobbyTimerId = null;
+  }
+  battleState.soloLobbyDeadline = null;
+}
+
+function scheduleSoloLobbyWaitTimer(room) {
+  const playerTotal = Object.keys(room.players || {}).length;
+  if (room.phase !== "lobby" || playerTotal !== 1 || !battleState.firebaseRoomCode) {
+    clearSoloLobbyWaitTimer();
+    return;
+  }
+
+  const baseAt = Number(room.updatedAt || room.createdAt || Date.now());
+  const deadline = baseAt + SOLO_LOBBY_MAX_WAIT_MS;
+  if (battleState.soloLobbyDeadline === deadline && battleState.soloLobbyTimerId) return;
+
+  clearSoloLobbyWaitTimer();
+  battleState.soloLobbyDeadline = deadline;
+  battleState.soloLobbyTimerId = window.setTimeout(async () => {
+    battleState.soloLobbyTimerId = null;
+    battleState.soloLobbyDeadline = null;
+    const snapshot = battleState.firebaseRoomSnapshot || {};
+    const stillSoloLobby = snapshot.phase === "lobby"
+      && Object.keys(snapshot.players || {}).length === 1;
+    if (!stillSoloLobby) return;
+
+    battleRuleNote.textContent = "1인 대기가 2분을 넘어 방이 정리되었습니다. 다시 신청해 주세요.";
+    await leaveCurrentRoom();
+  }, Math.max(0, deadline - getFirebaseNow()));
 }
 
 function applyFirebaseRoomSnapshot(room) {
@@ -968,6 +1006,7 @@ function applyFirebaseRoomSnapshot(room) {
   renderScoreBoard();
   updateRoomActionState();
   updateHostControlButton();
+  scheduleSoloLobbyWaitTimer(room);
 
   if (room.phase === "playing" && currentPlayer?.waitingNextRound) {
     enterFirebaseNextRoundWaiting(room);
@@ -1603,9 +1642,9 @@ function showBattleFinalModal(standings, targetScore = battleState.targetScore) 
   battleFinalModal.hidden = false;
 }
 
-function closeBattleFinalModal() {
+async function closeBattleFinalModal() {
   battleFinalModal.hidden = true;
-  openOnlineScreen();
+  await leaveCurrentRoom();
 }
 
 async function setCurrentPlayerReady() {
