@@ -112,7 +112,9 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-nav-score1";
+const APP_BUILD = "20260609-server-time1";
+const BATTLE_TIME_LIMIT_MS = 120000;
+const FIREBASE_REVEAL_DELAY_MS = 3000;
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -170,6 +172,7 @@ const battleState = {
   isHost: false,
   roomUnsubscribe: null,
   roundStartedAt: null,
+  firebaseSolveStartedAt: null,
   roundTimerId: null,
   roundEndTimerId: null,
   countdownTimerId: null,
@@ -179,10 +182,12 @@ const battleState = {
   statusMap: {},
   submissions: [],
   currentProblem: null,
+  firebaseRoomSnapshot: null,
   autoStartPaused: false,
   firebaseResultShown: false,
   firebaseResultRound: null,
   firebaseAutoStartKey: null,
+  firebaseTimeoutKey: null,
 };
 const firebaseState = {
   ready: false,
@@ -316,6 +321,11 @@ previewDice.forEach((die) => {
 });
 
 window.setTimeout(applyPreviewFromUrl, 0);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncFirebaseRoundClock();
+});
+window.addEventListener("focus", syncFirebaseRoundClock);
+window.addEventListener("pageshow", syncFirebaseRoundClock);
 
 function applyPreviewFromUrl() {
   const preview = new URLSearchParams(window.location.search).get("preview");
@@ -488,9 +498,13 @@ async function runFirebaseRoomCleanup() {
   if (!window.diceFirebase?.cleanupStaleRooms) return;
 
   try {
-    const result = await window.diceFirebase.cleanupStaleRooms();
-    if (result.removedCount > 0) {
-      firebaseState.status = `Firebase 연결됨 · 오래된 방 ${result.removedCount}개 정리`;
+    const roomResult = await window.diceFirebase.cleanupStaleRooms();
+    const userRoomResult = window.diceFirebase.cleanupUserRooms
+      ? await window.diceFirebase.cleanupUserRooms()
+      : { removedCount: 0 };
+    const removedCount = Number(roomResult.removedCount || 0) + Number(userRoomResult.removedCount || 0);
+    if (removedCount > 0) {
+      firebaseState.status = `Firebase 연결됨 · 오래된 기록 ${removedCount}개 정리`;
       renderOnlineProgress();
     }
   } catch (error) {
@@ -748,10 +762,13 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleState.statusMap = {};
   battleState.submissions = [];
   battleState.currentProblem = null;
+  battleState.firebaseRoomSnapshot = null;
+  battleState.firebaseSolveStartedAt = null;
   battleState.autoStartPaused = false;
   battleState.firebaseResultShown = false;
   battleState.firebaseResultRound = null;
   battleState.firebaseAutoStartKey = null;
+  battleState.firebaseTimeoutKey = null;
   roomCodeLabel.textContent = roomCode;
   updateBattleRoomCode(roomCode);
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
@@ -826,6 +843,7 @@ function applyFirebaseRoomSnapshot(room) {
     battleState.firebaseResultShown = false;
     battleState.firebaseResultRound = null;
     battleState.firebaseAutoStartKey = null;
+    battleState.firebaseTimeoutKey = null;
     clearAutoStartTimers();
   }
 
@@ -855,6 +873,7 @@ function applyFirebaseRoomSnapshot(room) {
   const isCurrentUserHost = Boolean(currentPlayer?.isHost || room.hostUid === uid);
 
   battleState.roomMode = room.mode || battleState.roomMode;
+  battleState.firebaseRoomSnapshot = room;
   battleState.playerCount = Number(room.playerCount || battleState.playerCount);
   battleState.round = incomingRound;
   battleState.players = players.length ? players : battleState.players;
@@ -1046,10 +1065,64 @@ function maybeStartFullAutoMatch(room) {
   }, 700);
 }
 
+function getFirebaseNow() {
+  return window.diceFirebase?.getServerNow ? window.diceFirebase.getServerNow() : Date.now();
+}
+
+function getFirebaseSolveStartedAt(room) {
+  const rawStartedAt = Number(room?.roundStartedAt || 0);
+  if (Number.isFinite(rawStartedAt) && rawStartedAt > 0) {
+    return rawStartedAt + FIREBASE_REVEAL_DELAY_MS;
+  }
+
+  return battleState.firebaseSolveStartedAt || getFirebaseNow();
+}
+
+function getFirebaseRoundElapsedMs() {
+  if (!battleState.firebaseSolveStartedAt) return 0;
+  return Math.max(0, Math.min(BATTLE_TIME_LIMIT_MS, getFirebaseNow() - battleState.firebaseSolveStartedAt));
+}
+
+function getBattleElapsedMs() {
+  if (battleState.firebaseRoomCode) return getFirebaseRoundElapsedMs();
+  return Math.max(0, performance.now() - battleState.roundStartedAt);
+}
+
+function startFirebaseRoundClock(room) {
+  battleState.firebaseSolveStartedAt = getFirebaseSolveStartedAt(room);
+
+  if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
+  if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
+
+  const updateClock = () => {
+    const elapsed = getFirebaseRoundElapsedMs();
+    battleElapsed.textContent = formatTime(elapsed);
+    if (elapsed >= BATTLE_TIME_LIMIT_MS) {
+      maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
+      handleFirebaseRoundTimeout();
+    }
+  };
+
+  updateClock();
+  battleState.roundTimerId = window.setInterval(updateClock, 250);
+  battleState.roundEndTimerId = window.setTimeout(updateClock, Math.max(0, BATTLE_TIME_LIMIT_MS - getFirebaseRoundElapsedMs()));
+}
+
+function syncFirebaseRoundClock() {
+  if (battleState.phase !== "playing" || !battleState.firebaseRoomCode || !battleState.firebaseSolveStartedAt) return;
+  const elapsed = getFirebaseRoundElapsedMs();
+  battleElapsed.textContent = formatTime(elapsed);
+  if (elapsed >= BATTLE_TIME_LIMIT_MS) {
+    maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
+    handleFirebaseRoundTimeout();
+  }
+}
+
 function enterFirebaseRound(room) {
   if (battleState.phase === "playing") {
-    if (room.currentProblem && !battleState.countdownTimerId) renderFirebaseProblem(room.currentProblem);
+    if (room.currentProblem && !battleState.countdownTimerId) renderFirebaseProblem(room.currentProblem, room);
     renderBattleStatuses(Object.fromEntries(battleState.players.map((player) => [player.id, player.status || "풀이중"])));
+    syncFirebaseRoundClock();
     return;
   }
 
@@ -1066,7 +1139,7 @@ function enterFirebaseRound(room) {
   updateBattleRoomCode(room.code || battleState.firebaseRoomCode);
   if (room.currentProblem) {
     prepareHiddenFirebaseProblem(room.currentProblem);
-    beginFirebaseRevealCountdown(room.currentProblem);
+    beginFirebaseRevealCountdown(room.currentProblem, room);
   } else {
     battleTensDie.textContent = "?";
     battleOnesDie.textContent = "?";
@@ -1095,15 +1168,24 @@ function prepareHiddenFirebaseProblem(problem) {
   setBattleInputEnabled(false);
 }
 
-function beginFirebaseRevealCountdown(problem) {
+function beginFirebaseRevealCountdown(problem, room) {
   if (battleState.countdownTimerId) return;
 
-  let count = 3;
+  const solveStartedAt = getFirebaseSolveStartedAt(room);
+  battleState.firebaseSolveStartedAt = solveStartedAt;
+  let count = Math.ceil(Math.max(0, solveStartedAt - getFirebaseNow()) / 1000);
+  if (count <= 0) {
+    battleCountdownLayer.hidden = true;
+    renderFirebaseProblem(problem, room);
+    return;
+  }
+
   battleCountdownLayer.hidden = false;
   battleCountdownNumber.textContent = count;
+  onlineReadyButton.textContent = `${count}초 후 시작`;
 
   battleState.countdownTimerId = window.setInterval(() => {
-    count -= 1;
+    count = Math.ceil(Math.max(0, solveStartedAt - getFirebaseNow()) / 1000);
     if (count > 0) {
       battleCountdownNumber.textContent = count;
       onlineReadyButton.textContent = `${count}초 후 시작`;
@@ -1113,11 +1195,11 @@ function beginFirebaseRevealCountdown(problem) {
     clearInterval(battleState.countdownTimerId);
     battleState.countdownTimerId = null;
     battleCountdownLayer.hidden = true;
-    renderFirebaseProblem(problem);
+    renderFirebaseProblem(problem, room);
   }, 1000);
 }
 
-function renderFirebaseProblem(problem) {
+function renderFirebaseProblem(problem, room) {
   const normalizedProblem = normalizeFirebaseProblem(problem);
 
   if (!normalizedProblem) return;
@@ -1133,12 +1215,11 @@ function renderFirebaseProblem(problem) {
   }
 
   game.isRevealed = true;
-  if (!battleState.roundStartedAt) {
-    battleState.roundStartedAt = performance.now();
-    battleState.roundTimerId = window.setInterval(() => {
-      battleElapsed.textContent = formatTime(performance.now() - battleState.roundStartedAt);
-    }, 47);
-    battleState.roundEndTimerId = window.setTimeout(handleFirebaseRoundTimeout, 120000);
+  if (!battleState.firebaseSolveStartedAt) {
+    battleState.firebaseSolveStartedAt = getFirebaseSolveStartedAt(room);
+  }
+  if (!battleState.roundTimerId) {
+    startFirebaseRoundClock(room);
   }
   renderGame();
   setFeedback("시작! 정답을 제출하면 상대 파티창에 완료로 표시됩니다.", "success");
@@ -1165,7 +1246,7 @@ async function handleFirebaseRoundTimeout() {
 
   game.isSolved = true;
   battleState.statusMap[me.id] = "시간초과";
-  stopBattleRoundTimerAt(120000);
+  stopBattleRoundTimerAt(BATTLE_TIME_LIMIT_MS);
   setBattleInputEnabled(false);
   setFeedback("시간초과! 이번 라운드는 시간초과로 제출됩니다.", "error");
   renderGame();
@@ -1207,6 +1288,8 @@ function handleFirebaseRoundCompletion(room) {
   const players = getFirebaseRoundPlayerEntries(room);
   if (players.length < 2) return;
 
+  maybeSubmitFirebaseTimeouts(room, players);
+
   const allDone = players.every(([, player]) => isFirebasePlayerDone(player));
   if (!allDone) return;
 
@@ -1218,6 +1301,28 @@ function handleFirebaseRoundCompletion(room) {
 
   if (battleState.isHost) {
     saveFirebaseRoundResult(results);
+  }
+}
+
+async function maybeSubmitFirebaseTimeouts(room, players = getFirebaseRoundPlayerEntries(room)) {
+  if (!room) return;
+  if (!battleState.firebaseRoomCode || !firebaseState.ready || !window.diceFirebase?.submitTimeouts) return;
+  if (getFirebaseRoundElapsedMs() < BATTLE_TIME_LIMIT_MS) return;
+
+  const timedOutIds = players
+    .filter(([, player]) => !isFirebasePlayerDone(player))
+    .map(([id]) => id);
+  if (!timedOutIds.length) return;
+
+  const timeoutKey = `${battleState.firebaseRoomCode}:${room.round || battleState.round}:${timedOutIds.sort().join(",")}`;
+  if (battleState.firebaseTimeoutKey === timeoutKey) return;
+  battleState.firebaseTimeoutKey = timeoutKey;
+
+  try {
+    await window.diceFirebase.submitTimeouts(battleState.firebaseRoomCode, timedOutIds);
+  } catch (error) {
+    battleState.firebaseTimeoutKey = null;
+    console.warn("Firebase 미제출 시간초과 동기화 실패:", error);
   }
 }
 
@@ -1267,8 +1372,8 @@ function createFirebaseRoundResults(room) {
       name: player.name || "이름 없음",
       rankLabel: "초과",
       points: 5,
-      time: 120000,
-      timeLabel: "120.00",
+      time: BATTLE_TIME_LIMIT_MS,
+      timeLabel: formatTime(BATTLE_TIME_LIMIT_MS),
       expression: "",
       timedOut: true,
     }));
@@ -1377,10 +1482,13 @@ function resetMockBattle() {
   battleState.statusMap = {};
   battleState.submissions = [];
   battleState.currentProblem = null;
+  battleState.firebaseRoomSnapshot = null;
+  battleState.firebaseSolveStartedAt = null;
   battleState.autoStartPaused = false;
   battleState.firebaseResultShown = false;
   battleState.firebaseResultRound = null;
   battleState.firebaseAutoStartKey = null;
+  battleState.firebaseTimeoutKey = null;
   lobbyModeLabel.textContent = "비공개 대기방";
   battleRuleNote.textContent = getBattleRuleNote(battleState.roomMode);
   roomCodeLabel.textContent = "A7K2Q9";
@@ -1456,6 +1564,7 @@ function clearBattleTimers() {
   battleState.countdownTimerId = null;
   battleState.statusTimerIds = [];
   battleState.roundStartedAt = null;
+  battleState.firebaseSolveStartedAt = null;
   battleState.autoStartPaused = false;
   battleCountdownLayer.hidden = true;
   updateHostControlButton();
@@ -1538,7 +1647,7 @@ function revealBattleRound() {
   battleState.statusTimerIds = battleState.players.slice(1).map((player, index) => (
     window.setTimeout(() => submitMockOpponent(player, index), 5600 + index * 2100)
   ));
-  battleState.roundEndTimerId = window.setTimeout(finishBattleRoundByTimeout, 120000);
+  battleState.roundEndTimerId = window.setTimeout(finishBattleRoundByTimeout, BATTLE_TIME_LIMIT_MS);
 }
 
 function renderBattleStatuses(statusMap = {}) {
@@ -1557,7 +1666,7 @@ function renderBattleStatuses(statusMap = {}) {
       state.textContent = status;
       row.className = "party-member";
       row.dataset.status = status;
-      row.append(avatar, name, score, state);
+      row.append(avatar, name, state, score);
       return row;
     })
   );
@@ -1566,7 +1675,7 @@ function renderBattleStatuses(statusMap = {}) {
 function submitMockOpponent(player, index) {
   if (battleState.phase !== "playing") return;
   const expression = findBasicSolution(game.dice.map((die) => die.value), game.target) || "검증 완료 식";
-  const time = Math.min(performance.now() - battleState.roundStartedAt, 119000);
+  const time = Math.min(performance.now() - battleState.roundStartedAt, BATTLE_TIME_LIMIT_MS - 1000);
   battleState.statusMap[player.id] = "완료";
   battleState.submissions.push({
     id: player.id,
@@ -1770,7 +1879,7 @@ function createMockRoundResults() {
       ...player,
       rankLabel: "초과",
       points: 5,
-      timeLabel: "120.00",
+      timeLabel: formatTime(BATTLE_TIME_LIMIT_MS),
       expression: "",
       timedOut: true,
     }));
@@ -2390,7 +2499,7 @@ function checkAnswer() {
   }
 
   const time = game.mode === "battle"
-    ? performance.now() - battleState.roundStartedAt
+    ? getBattleElapsedMs()
     : stopTimer();
   const expression = stringifyTokens(game.tokens);
   if (game.mode === "battle") {

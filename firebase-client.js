@@ -3,6 +3,7 @@
   const hasFirebaseSdk = Boolean(window.firebase?.initializeApp);
   const hasConfig = Boolean(globalConfig.enabled && globalConfig.config?.apiKey && globalConfig.config?.projectId);
   const roomCodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const onlineTimeLimitMs = 120000;
 
   function createRoomCode() {
     return Array.from({ length: 6 }, () => (
@@ -26,6 +27,7 @@
     app: null,
     auth: null,
     database: null,
+    serverTimeOffset: 0,
     async init() {
       if (!hasFirebaseSdk || !hasConfig) return { enabled: false, reason: "not-configured" };
 
@@ -35,6 +37,11 @@
           : window.firebase.initializeApp(globalConfig.config);
         this.auth = window.firebase.auth();
         this.database = globalConfig.config.databaseURL ? window.firebase.database() : null;
+        if (this.database) {
+          this.database.ref(".info/serverTimeOffset").on("value", (snapshot) => {
+            this.serverTimeOffset = Number(snapshot.val() || 0);
+          });
+        }
         const credential = await this.auth.signInAnonymously();
         this.user = credential.user;
         this.enabled = true;
@@ -59,11 +66,62 @@
     getDatabase() {
       return this.database;
     },
+    getServerNow() {
+      return Date.now() + Number(this.serverTimeOffset || 0);
+    },
+    async cleanupUserRooms() {
+      requireDatabase(this);
+
+      const uid = this.getUid();
+      const snapshot = await this.database.ref(`userRooms/${uid}`).once("value");
+      const userRooms = snapshot.val() || {};
+      const updates = {};
+      let removedCount = 0;
+
+      for (const code of Object.keys(userRooms)) {
+        const normalizedCode = String(code || "").trim().toUpperCase();
+        const roomSnapshot = await this.database.ref(`rooms/${normalizedCode}`).once("value");
+        const room = roomSnapshot.val();
+        if (!room || !room.players?.[uid]) {
+          updates[`userRooms/${uid}/${normalizedCode}`] = null;
+          removedCount += 1;
+        }
+      }
+
+      if (removedCount > 0) {
+        await this.database.ref().update(updates);
+      }
+
+      return { removedCount };
+    },
+    async leaveExistingRooms({ exceptCode = "" } = {}) {
+      requireDatabase(this);
+
+      await this.cleanupUserRooms();
+
+      const uid = this.getUid();
+      const normalizedExceptCode = String(exceptCode || "").trim().toUpperCase();
+      const snapshot = await this.database.ref(`userRooms/${uid}`).once("value");
+      const userRooms = snapshot.val() || {};
+      let leftCount = 0;
+
+      for (const code of Object.keys(userRooms)) {
+        const normalizedCode = String(code || "").trim().toUpperCase();
+        if (normalizedCode && normalizedCode !== normalizedExceptCode) {
+          await this.leaveRoom(normalizedCode);
+          leftCount += 1;
+        }
+      }
+
+      return { leftCount };
+    },
     async createRoom({ mode, playerCount, nickname, matchmaking = false, difficulty = "basic" }) {
       requireDatabase(this);
 
       const uid = this.getUid();
       const now = window.firebase.database.ServerValue.TIMESTAMP;
+
+      await this.leaveExistingRooms();
 
       for (let attempt = 0; attempt < 14; attempt += 1) {
         const code = createRoomCode();
@@ -149,6 +207,7 @@
 
       const room = snapshot.val();
       const uid = this.getUid();
+      await this.leaveExistingRooms({ exceptCode: normalizedCode });
       const players = room.players || {};
       const alreadyJoined = Boolean(players[uid]);
       const playerCount = Object.keys(players).length;
@@ -282,11 +341,32 @@
       await roomRef.update({
         [`players/${uid}/status`]: "시간초과",
         [`submissions/${uid}/expression`]: "",
-        [`submissions/${uid}/time`]: 120000,
+        [`submissions/${uid}/time`]: onlineTimeLimitMs,
         [`submissions/${uid}/timedOut`]: true,
         [`submissions/${uid}/submittedAt`]: now,
         updatedAt: now,
       });
+    },
+    async submitTimeouts(code, playerIds = []) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const ids = [...new Set(playerIds.map((id) => String(id || "")).filter(Boolean))];
+      if (!ids.length) return { updatedCount: 0 };
+
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const updates = { updatedAt: now };
+      ids.forEach((playerUid) => {
+        updates[`players/${playerUid}/status`] = "시간초과";
+        updates[`submissions/${playerUid}/expression`] = "";
+        updates[`submissions/${playerUid}/time`] = onlineTimeLimitMs;
+        updates[`submissions/${playerUid}/timedOut`] = true;
+        updates[`submissions/${playerUid}/submittedAt`] = now;
+      });
+
+      await roomRef.update(updates);
+      return { updatedCount: ids.length };
     },
     async finishRound(code, { round, results }) {
       requireDatabase(this);
@@ -396,7 +476,10 @@
       const roomRef = this.database.ref(`rooms/${normalizedCode}`);
       const snapshot = await roomRef.once("value");
 
-      if (!snapshot.exists()) return { removedRoom: false };
+      if (!snapshot.exists()) {
+        await this.database.ref(`userRooms/${uid}/${normalizedCode}`).remove();
+        return { removedRoom: false };
+      }
 
       const room = snapshot.val();
       await this.database.ref(`userRooms/${uid}/${normalizedCode}`).remove();
@@ -482,6 +565,19 @@
             updates[`userRooms/${playerUid}/${code}`] = null;
           });
         }
+      });
+
+      const userRoomsSnapshot = await this.database.ref("userRooms").once("value");
+      const userRooms = userRoomsSnapshot.val() || {};
+      Object.entries(userRooms).forEach(([playerUid, roomMap]) => {
+        Object.keys(roomMap || {}).forEach((code) => {
+          const normalizedCode = String(code || "").trim().toUpperCase();
+          const room = rooms[normalizedCode];
+          if (!room || !room.players?.[playerUid]) {
+            updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
+            removedCount += 1;
+          }
+        });
       });
 
       if (removedCount > 0) {
