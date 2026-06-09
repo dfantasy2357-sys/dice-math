@@ -230,7 +230,7 @@
       await this.leaveExistingRooms();
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const queueRef = this.database.ref(`matchQueues/${size}/${scoreGoal}`);
+        const queueRef = this.database.ref(`matchQueues/${size}/${scoreGoal}/${roomDifficulty}`);
         const reservedAt = Date.now();
         const newCode = createRoomCode();
         const result = await queueRef.transaction((queue) => {
@@ -241,6 +241,7 @@
           if (queue?.roomCode
             && Number(queue.playerCount || 0) === size
             && Number(queue.targetScore || scoreGoal) === scoreGoal
+            && (queue.difficulty || "basic") === roomDifficulty
             && joinedCount <= size) {
             return {
               ...queue,
@@ -628,7 +629,8 @@
       const roomPhase = room.phase || "lobby";
       const roomPlayerCount = Math.min(4, Math.max(2, Number(room.playerCount || 2)));
       const roomTargetScore = Math.min(500, Math.max(100, Number(room.targetScore || 200)));
-      const queuePath = isAutoMatch ? `matchQueues/${roomPlayerCount}/${roomTargetScore}` : "";
+      const roomDifficulty = room.difficulty === "power" ? "power" : "basic";
+      const queuePath = isAutoMatch ? `matchQueues/${roomPlayerCount}/${roomTargetScore}/${roomDifficulty}` : "";
       const queueSnapshot = queuePath ? await this.database.ref(queuePath).once("value") : null;
       const queue = queueSnapshot?.val() || {};
       const queueMatchesRoom = queuePath && String(queue.roomCode || "").toUpperCase() === normalizedCode;
@@ -769,21 +771,32 @@
 
       const matchQueuesSnapshot = await this.database.ref("matchQueues").once("value");
       const matchQueues = matchQueuesSnapshot.val() || {};
+      const inspectMatchQueue = (path, queue, size) => {
+        const code = String(queue?.roomCode || "").toUpperCase();
+        const room = rooms[code];
+        const players = room?.players || {};
+        const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
+        const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
+        const isInvalidQueue = updates[`rooms/${code}`] === null
+          || !room
+          || room.phase !== "lobby"
+          || Object.keys(players).length >= Number(room.playerCount || size || 0);
+        if (isOldQueue || isInvalidQueue) {
+          updates[path] = null;
+          removedCount += 1;
+        }
+      };
+
       Object.entries(matchQueues).forEach(([size, scoreQueues]) => {
-        Object.entries(scoreQueues || {}).forEach(([scoreGoal, queue]) => {
-          const code = String(queue?.roomCode || "").toUpperCase();
-          const room = rooms[code];
-          const players = room?.players || {};
-          const queueUpdatedAt = Number(queue?.updatedAt || queue?.createdAt || 0);
-          const isOldQueue = queueUpdatedAt > 0 && now - queueUpdatedAt > maxAgeMs;
-          const isInvalidQueue = updates[`rooms/${code}`] === null
-            || !room
-            || room.phase !== "lobby"
-            || Object.keys(players).length >= Number(room.playerCount || size || 0);
-          if (isOldQueue || isInvalidQueue) {
-            updates[`matchQueues/${size}/${scoreGoal}`] = null;
-            removedCount += 1;
+        Object.entries(scoreQueues || {}).forEach(([scoreGoal, queueOrDifficultyQueues]) => {
+          if (queueOrDifficultyQueues?.roomCode) {
+            inspectMatchQueue(`matchQueues/${size}/${scoreGoal}`, queueOrDifficultyQueues, size);
+            return;
           }
+
+          Object.entries(queueOrDifficultyQueues || {}).forEach(([difficulty, queue]) => {
+            inspectMatchQueue(`matchQueues/${size}/${scoreGoal}/${difficulty}`, queue, size);
+          });
         });
       });
 

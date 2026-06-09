@@ -131,7 +131,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-settings1";
+const APP_BUILD = "20260609-match-sound1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -768,6 +768,7 @@ function closeJoinCodeSheet() {
 }
 
 function openOnlineDifficultySheet() {
+  if (blockInvalidNicknameEntry()) return;
   renderOnlineDifficulty();
   onlineDifficultySheet.hidden = false;
 }
@@ -783,6 +784,7 @@ function renderOnlineDifficulty() {
 }
 
 async function joinRoomWithCode() {
+  if (blockInvalidNicknameEntry()) return;
   const code = joinCodeInput.value.trim().toUpperCase();
   if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
     joinCodeInput.focus();
@@ -793,6 +795,7 @@ async function joinRoomWithCode() {
 }
 
 async function createOnlineRoom(mode, playerCount, sourceButton) {
+  if (blockInvalidNicknameEntry()) return;
   await firebaseInitPromise;
 
   if (!firebaseState.ready || !window.diceFirebase?.isEnabled()) {
@@ -827,6 +830,7 @@ async function createOnlineRoom(mode, playerCount, sourceButton) {
 }
 
 async function joinAutoMatch(playerCount, sourceButton) {
+  if (blockInvalidNicknameEntry()) return;
   const mode = `${playerCount}인 자동매칭`;
   await firebaseInitPromise;
 
@@ -902,6 +906,24 @@ function getOnlineNickname() {
     nicknamePreview.textContent = "사용할 수 없는 닉네임이에요";
   }
   return nickname;
+}
+
+function hasInvalidNicknameEntry() {
+  const value = nicknameInput.value.trim();
+  return Boolean(value && !isNicknameAllowed(value));
+}
+
+function blockInvalidNicknameEntry() {
+  if (!hasInvalidNicknameEntry()) return false;
+
+  const message = "닉네임을 먼저 수정해 주세요.";
+  nicknamePreview.textContent = "사용할 수 없는 닉네임이에요";
+  if (settingsSheet.hidden) {
+    openSettingsSheet();
+  }
+  settingsNicknameHelp.textContent = message;
+  settingsNicknameInput.focus();
+  return true;
 }
 
 function normalizeNicknameText(value) {
@@ -2890,6 +2912,7 @@ async function handleBattleCorrectAnswer(time, expression) {
   game.isSolved = true;
   markBattleAnswerSubmitted();
   stopBattleRoundTimerAt(time);
+  playSuccessSound();
   setFeedback("제출 완료! 다른 사람의 식은 라운드 종료 후 공개됩니다.");
   renderGame();
   renderBattleStatuses(battleState.statusMap);
@@ -3000,6 +3023,7 @@ function beginCountdown() {
 }
 
 function playRollReveal() {
+  playRollSound();
   rollStage.replaceChildren();
   rollLayer.hidden = false;
 
@@ -3167,6 +3191,7 @@ function handleCorrectAnswer(time) {
   progress.clears += 1;
   localStorage.setItem("diceMath.clearCount", String(progress.clears));
   renderProgress();
+  playSuccessSound();
   openSuccessResult(time);
 }
 
@@ -3188,6 +3213,34 @@ function updateSuccessRewardButton() {
 
 function closeSuccessResult() {
   successResult.hidden = true;
+}
+
+function createGameAudio() {
+  if (!soundEnabled) return null;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  return AudioContext ? new AudioContext() : null;
+}
+
+function playRollSound() {
+  const audio = createGameAudio();
+  if (!audio) return;
+  const now = audio.currentTime;
+  [180, 230, 165, 260, 205, 300].forEach((frequency, index) => {
+    playClick(audio, now + index * 0.055, frequency);
+  });
+  window.setTimeout(() => audio.close(), 720);
+}
+
+function playSuccessSound() {
+  const audio = createGameAudio();
+  if (!audio) return;
+  const now = audio.currentTime;
+  playTone(audio, now + 0.02, 523, 0.1);
+  playTone(audio, now + 0.12, 659, 0.11);
+  playTone(audio, now + 0.24, 784, 0.16);
+  playClap(audio, now + 0.12);
+  playClap(audio, now + 0.28);
+  window.setTimeout(() => audio.close(), 900);
 }
 
 function playRewardSound() {
@@ -3234,4 +3287,26 @@ function playTone(audio, startAt, frequency, length) {
   oscillator.connect(gain).connect(audio.destination);
   oscillator.start(startAt);
   oscillator.stop(startAt + length + 0.02);
+}
+
+function playClap(audio, startAt) {
+  const sampleRate = audio.sampleRate;
+  const buffer = audio.createBuffer(1, Math.floor(sampleRate * 0.07), sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let index = 0; index < data.length; index += 1) {
+    data[index] = (Math.random() * 2 - 1) * (1 - index / data.length);
+  }
+
+  const source = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(1400, startAt);
+  gain.gain.setValueAtTime(0.001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.09, startAt + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.07);
+  source.buffer = buffer;
+  source.connect(filter).connect(gain).connect(audio.destination);
+  source.start(startAt);
+  source.stop(startAt + 0.08);
 }
