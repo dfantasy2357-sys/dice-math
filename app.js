@@ -112,7 +112,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260608-firebase14";
+const APP_BUILD = "20260609-nav-score1";
 const skinClasses = [
   "theme-basic",
   "theme-classroom",
@@ -248,7 +248,7 @@ difficultyCards.forEach((button) => {
 
 soloButton.addEventListener("click", openSoloSheet);
 onlineButton.addEventListener("click", openOnlineScreen);
-onlineBackButton.addEventListener("click", leaveCurrentRoom);
+onlineBackButton.addEventListener("click", handleOnlineBackClick);
 leaveRoomButton.addEventListener("click", leaveCurrentRoom);
 createRoomButton.addEventListener("click", () => createOnlineRoom("비공개 친구 방", 4, createRoomButton));
 joinRoomButton.addEventListener("click", openJoinCodeSheet);
@@ -726,6 +726,15 @@ function openOnlineScreen() {
   setOnlinePhase("menu");
 }
 
+function handleOnlineBackClick() {
+  if (battleState.phase === "menu") {
+    openHome();
+    return;
+  }
+
+  leaveCurrentRoom();
+}
+
 function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), options = {}) {
   clearRoomSubscription();
   clearBattleTimers();
@@ -895,14 +904,16 @@ function renderLobbyPlayers() {
       const row = document.createElement("div");
       const badge = document.createElement("span");
       const name = document.createElement("strong");
+      const score = document.createElement("em");
       const status = document.createElement("small");
 
       row.className = `player-row${isMe ? " me" : ""}`;
       badge.className = "player-badge";
       badge.textContent = isMe ? "나" : String(index + 1);
       name.textContent = player.isHost && !isAutoMatchRoom() ? `${player.name} 방장` : player.name;
+      score.textContent = `${Number(player.score || 0)}점`;
       status.textContent = player.status || (isMe ? "준비 전" : "기다리는 중");
-      row.append(badge, name, status);
+      row.append(badge, name, score, status);
       return row;
     })
   );
@@ -1391,6 +1402,8 @@ function setOnlinePhase(phase) {
   battleState.phase = phase;
   onlineScreen.classList.remove("phase-menu", "phase-lobby", "phase-playing", "phase-result");
   onlineScreen.classList.add(`phase-${phase}`);
+  onlineBackButton.textContent = phase === "menu" ? "홈" : "←";
+  onlineBackButton.setAttribute("aria-label", phase === "menu" ? "홈으로 가기" : "온라인 메뉴로 돌아가기");
   updateRoomActionState();
   updateHostControlButton();
 }
@@ -1535,14 +1548,16 @@ function renderBattleStatuses(statusMap = {}) {
       const row = document.createElement("div");
       const avatar = document.createElement("span");
       const name = document.createElement("strong");
+      const score = document.createElement("em");
       const state = document.createElement("span");
       avatar.className = "party-avatar";
       avatar.textContent = index === 0 ? "나" : String(index + 1);
       name.textContent = player.name;
+      score.textContent = `${Number(player.score || 0)}점`;
       state.textContent = status;
       row.className = "party-member";
       row.dataset.status = status;
-      row.append(avatar, name, state);
+      row.append(avatar, name, score, state);
       return row;
     })
   );

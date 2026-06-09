@@ -1089,7 +1089,7 @@ button {
   padding: 8px 10px;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   background: #f3f6f8;
@@ -1112,11 +1112,25 @@ button {
 }
 
 .player-row strong {
+  min-width: 0;
   font-size: 15px;
   font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-row em {
+  color: #3b2a0c;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .player-row small {
+  grid-column: 2 / 4;
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
@@ -1363,7 +1377,7 @@ button {
   padding: 7px;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: 30px 1fr;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   background: rgba(255, 255, 255, 0.12);
@@ -1391,7 +1405,8 @@ button {
 }
 
 .battle-status-list strong,
-.battle-status-list span {
+.battle-status-list span,
+.battle-status-list em {
   font-weight: 950;
 }
 
@@ -1406,8 +1421,17 @@ button {
 }
 
 .battle-status-list span {
+  grid-column: 2 / 4;
   color: rgba(255, 255, 255, 0.78);
   font-size: 11px;
+}
+
+.battle-status-list em {
+  color: var(--gold);
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .battle-secret-note {
@@ -2892,7 +2916,7 @@ button {
 
   .party-member {
     min-height: 46px;
-    grid-template-columns: 28px 1fr;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
   }
 
   .party-avatar {
