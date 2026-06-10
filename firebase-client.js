@@ -11,6 +11,24 @@
     )).join("");
   }
 
+  function createPublicId() {
+    return `cnm-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
+  }
+
+  function normalizeProfilePayload(profile = {}) {
+    const targetScore = Math.min(500, Math.max(100, Number(profile.battleTargetScore || 200)));
+    return {
+      nickname: cleanNickname(profile.nickname),
+      clearCount: Math.max(0, Number(profile.clearCount || 0)),
+      claimedSkins: profile.claimedSkins && typeof profile.claimedSkins === "object" ? profile.claimedSkins : { basic: true, classroom: true, box: true },
+      selectedSkin: String(profile.selectedSkin || "basic"),
+      selectedDifficulty: profile.selectedDifficulty === "power" ? "power" : "basic",
+      selectedOnlineDifficulty: profile.selectedOnlineDifficulty === "power" ? "power" : "basic",
+      battleTargetScore: [100, 200, 300, 500].includes(targetScore) ? targetScore : 200,
+      soundEnabled: profile.soundEnabled !== false,
+    };
+  }
+
   function cleanNickname(nickname) {
     const fallback = "나의 닉네임";
     const safeCleaned = String(nickname || fallback).trim().slice(0, 10) || fallback;
@@ -106,6 +124,57 @@
     },
     getServerNow() {
       return Date.now() + Number(this.serverTimeOffset || 0);
+    },
+    async reservePublicId(uid) {
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const publicId = createPublicId();
+        const publicRef = this.database.ref(`publicUsers/${publicId}`);
+        const result = await publicRef.transaction((current) => (
+          current ? current : { uid, createdAt: Date.now() }
+        ));
+        if (result.committed && result.snapshot.val()?.uid === uid) {
+          return publicId;
+        }
+      }
+
+      throw Object.assign(new Error("사용자 ID를 만들지 못했습니다."), { code: "public-id-failed" });
+    },
+    async ensureUserProfile(defaultProfile = {}) {
+      requireDatabase(this);
+
+      const uid = this.getUid();
+      const userRef = this.database.ref(`users/${uid}`);
+      const snapshot = await userRef.once("value");
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const existing = snapshot.val();
+
+      if (existing?.publicId) {
+        await this.database.ref(`publicUsers/${existing.publicId}`).transaction((current) => (
+          current ? current : { uid, createdAt: Date.now() }
+        ));
+        return { uid, ...existing };
+      }
+
+      const publicId = await this.reservePublicId(uid);
+      const payload = {
+        ...normalizeProfilePayload(existing || defaultProfile),
+        publicId,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      };
+      await userRef.update(payload);
+      return { uid, ...payload };
+    },
+    async saveUserProfile(profile = {}) {
+      requireDatabase(this);
+
+      const uid = this.getUid();
+      const payload = {
+        ...normalizeProfilePayload(profile),
+        updatedAt: window.firebase.database.ServerValue.TIMESTAMP,
+      };
+      await this.database.ref(`users/${uid}`).update(payload);
+      return payload;
     },
     async cleanupUserRooms() {
       requireDatabase(this);

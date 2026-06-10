@@ -17,6 +17,7 @@ const settingsNicknameInput = document.querySelector("#settingsNicknameInput");
 const settingsNicknameHelp = document.querySelector("#settingsNicknameHelp");
 const soundToggleButton = document.querySelector("#soundToggleButton");
 const resetDataButton = document.querySelector("#resetDataButton");
+const settingsPublicId = document.querySelector("#settingsPublicId");
 const settingsVersion = document.querySelector("#settingsVersion");
 const onlineDifficultySheet = document.querySelector("#onlineDifficultySheet");
 const onlineDifficultyBackdrop = document.querySelector("#onlineDifficultyBackdrop");
@@ -131,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260609-match-sound1";
+const APP_BUILD = "20260610-user-profile1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -179,7 +180,7 @@ const defaultClaimedSkins = ["basic", "classroom", "box"];
 const savedClaimedSkins = JSON.parse(localStorage.getItem("diceMath.claimedSkins") || "null");
 const claimedSkinIds = new Set(savedClaimedSkins || defaultClaimedSkins);
 const progress = {
-  clears: Number(localStorage.getItem("diceMath.clearCount") || 37),
+  clears: Number(localStorage.getItem("diceMath.clearCount") || 0),
   onlineGoal: 100,
 };
 const game = {
@@ -206,6 +207,9 @@ let selectedOnlineDifficulty = localStorage.getItem("diceMath.onlineDifficulty")
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
 let soundEnabled = localStorage.getItem("diceMath.soundEnabled") !== "false";
+let firebaseUserProfile = null;
+let firebaseProfileReady = false;
+let suppressProfileSave = false;
 let pendingRewardSkin = null;
 let nextId = 0;
 const usedMockRoomCodes = new Set(["A7K2Q9"]);
@@ -244,6 +248,7 @@ const firebaseState = {
   authReady: false,
   status: "Firebase 설정 전 · 목업 모드",
 };
+let profileSaveTimerId = null;
 
 setTimeout(() => {
   splash.classList.add("done");
@@ -265,6 +270,7 @@ nicknameInput.addEventListener("input", () => {
   if (settingsNicknameInput && settingsNicknameInput.value !== nicknameInput.value) {
     settingsNicknameInput.value = nicknameInput.value;
   }
+  scheduleUserProfileSave();
 });
 
 skinButtons.forEach((button) => {
@@ -305,6 +311,7 @@ difficultyCards.forEach((button) => {
     selectedDifficulty = button.dataset.difficulty;
     localStorage.setItem("diceMath.difficulty", selectedDifficulty);
     renderDifficulty();
+    scheduleUserProfileSave();
   });
 });
 
@@ -328,6 +335,7 @@ battleGoalButtons.forEach((button) => {
     selectedBattleTargetScore = normalizeBattleTargetScore(button.dataset.scoreGoal);
     localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
     renderBattleGoalOptions();
+    scheduleUserProfileSave();
   });
 });
 onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
@@ -352,6 +360,7 @@ onlineDifficultyButtons.forEach((button) => {
     selectedOnlineDifficulty = button.dataset.onlineDifficulty === "power" ? "power" : "basic";
     localStorage.setItem("diceMath.onlineDifficulty", selectedOnlineDifficulty);
     renderOnlineDifficulty();
+    scheduleUserProfileSave();
   });
 });
 sheetBackdrop.addEventListener("click", closeSoloSheet);
@@ -506,11 +515,13 @@ function applySkin(skin, options = {}) {
   appFrame.classList.remove(...skinClasses);
   appFrame.classList.add(`theme-${skin}`);
   if (options.closeSheet !== false) closeSkinSheet();
+  if (!options.skipProfileSave) scheduleUserProfileSave();
 }
 
 function claimSkin(skin) {
   claimedSkinIds.add(skin);
   localStorage.setItem("diceMath.claimedSkins", JSON.stringify([...claimedSkinIds]));
+  scheduleUserProfileSave();
 }
 
 function renderProgress() {
@@ -581,6 +592,7 @@ async function initFirebaseConnection() {
   firebaseState.ready = Boolean(result.enabled && result.databaseReady);
   if (result.enabled && result.databaseReady) {
     firebaseState.status = "Firebase 연결됨 · 온라인 준비";
+    await loadFirebaseUserProfile();
     runFirebaseRoomCleanup();
   } else if (result.enabled) {
     firebaseState.status = "Firebase 로그인됨 · DB URL 필요";
@@ -588,6 +600,101 @@ async function initFirebaseConnection() {
     firebaseState.status = "Firebase 설정 전 · 목업 모드";
   }
   renderOnlineProgress();
+}
+
+function getClaimedSkinMap() {
+  return [...claimedSkinIds].reduce((map, skin) => {
+    map[skin] = true;
+    return map;
+  }, {});
+}
+
+function getLocalUserProfile() {
+  return {
+    nickname: cleanLocalNickname(nicknameInput.value),
+    clearCount: progress.clears,
+    claimedSkins: getClaimedSkinMap(),
+    selectedSkin,
+    selectedDifficulty,
+    selectedOnlineDifficulty,
+    battleTargetScore: selectedBattleTargetScore,
+    soundEnabled,
+  };
+}
+
+function applyUserProfile(profile = {}) {
+  suppressProfileSave = true;
+
+  firebaseUserProfile = profile;
+  firebaseProfileReady = true;
+  nicknameInput.value = profile.nickname || nicknameInput.value || "";
+  settingsNicknameInput.value = nicknameInput.value;
+  nicknamePreview.textContent = nicknameInput.value || "닉네임을 정해주세요";
+  progress.clears = Math.max(0, Number(profile.clearCount || 0));
+
+  claimedSkinIds.clear();
+  const remoteSkins = profile.claimedSkins || {};
+  Object.entries(remoteSkins).forEach(([skin, enabled]) => {
+    if (enabled) claimedSkinIds.add(skin);
+  });
+  if (!claimedSkinIds.size) {
+    defaultClaimedSkins.forEach((skin) => claimedSkinIds.add(skin));
+  }
+
+  selectedDifficulty = profile.selectedDifficulty === "power" ? "power" : "basic";
+  selectedOnlineDifficulty = profile.selectedOnlineDifficulty === "power" ? "power" : "basic";
+  selectedBattleTargetScore = normalizeBattleTargetScore(profile.battleTargetScore || DEFAULT_BATTLE_TARGET_SCORE);
+  soundEnabled = profile.soundEnabled !== false;
+  selectedSkin = skinClasses.includes(`theme-${profile.selectedSkin}`) ? profile.selectedSkin : "basic";
+
+  localStorage.setItem("diceMath.clearCount", String(progress.clears));
+  localStorage.setItem("diceMath.claimedSkins", JSON.stringify([...claimedSkinIds]));
+  localStorage.setItem("diceMath.difficulty", selectedDifficulty);
+  localStorage.setItem("diceMath.onlineDifficulty", selectedOnlineDifficulty);
+  localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
+  localStorage.setItem("diceMath.soundEnabled", String(soundEnabled));
+  localStorage.setItem("diceMath.skin", selectedSkin);
+
+  applySkin(selectedSkin, { closeSheet: false, skipProfileSave: true });
+  renderProgress();
+  renderDifficulty();
+  renderOnlineDifficulty();
+  renderBattleGoalOptions();
+  renderSettings();
+
+  suppressProfileSave = false;
+}
+
+async function loadFirebaseUserProfile() {
+  if (!window.diceFirebase?.ensureUserProfile || !firebaseState.ready) return;
+
+  try {
+    const profile = await window.diceFirebase.ensureUserProfile(getLocalUserProfile());
+    applyUserProfile(profile);
+  } catch (error) {
+    console.warn("Firebase 사용자 정보 불러오기 실패:", error);
+  }
+}
+
+function scheduleUserProfileSave() {
+  if (suppressProfileSave || !firebaseProfileReady || !firebaseState.ready || !window.diceFirebase?.saveUserProfile) return;
+  if (profileSaveTimerId) clearTimeout(profileSaveTimerId);
+  profileSaveTimerId = window.setTimeout(saveUserProfileNow, 450);
+}
+
+async function saveUserProfileNow() {
+  profileSaveTimerId = null;
+  if (!firebaseProfileReady || !firebaseState.ready || !window.diceFirebase?.saveUserProfile) return;
+
+  try {
+    firebaseUserProfile = {
+      ...(firebaseUserProfile || {}),
+      ...(await window.diceFirebase.saveUserProfile(getLocalUserProfile())),
+    };
+    renderSettings();
+  } catch (error) {
+    console.warn("Firebase 사용자 정보 저장 실패:", error);
+  }
 }
 
 async function runFirebaseRoomCleanup() {
@@ -676,6 +783,7 @@ function closeSettingsSheet() {
 
 function renderSettings() {
   settingsVersion.textContent = APP_BUILD;
+  settingsPublicId.textContent = firebaseUserProfile?.publicId || (firebaseState.ready ? "발급 중..." : "온라인 연결 후 표시됩니다");
   soundToggleButton.textContent = soundEnabled ? "켜짐" : "꺼짐";
   soundToggleButton.setAttribute("aria-pressed", String(soundEnabled));
   soundToggleButton.classList.toggle("off", !soundEnabled);
@@ -690,12 +798,14 @@ function handleSettingsNicknameInput() {
     ? getNicknameWarning(value) || value
     : "닉네임을 정해주세요";
   renderSettings();
+  scheduleUserProfileSave();
 }
 
 function toggleSoundSetting() {
   soundEnabled = !soundEnabled;
   localStorage.setItem("diceMath.soundEnabled", String(soundEnabled));
   renderSettings();
+  scheduleUserProfileSave();
 }
 
 function resetLocalData() {
@@ -723,6 +833,7 @@ function resetLocalData() {
   renderBattleGoalOptions();
   renderProgress();
   renderSettings();
+  scheduleUserProfileSave();
 }
 
 function renderDifficulty() {
@@ -3191,6 +3302,7 @@ function handleCorrectAnswer(time) {
   progress.clears += 1;
   localStorage.setItem("diceMath.clearCount", String(progress.clears));
   renderProgress();
+  scheduleUserProfileSave();
   playSuccessSound();
   openSuccessResult(time);
 }
