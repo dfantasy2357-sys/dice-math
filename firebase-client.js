@@ -341,7 +341,11 @@
       const scoreGoal = Math.min(500, Math.max(100, Number(targetScore || 200)));
       const uid = this.getUid();
 
-      await this.cleanupStaleRooms({ soloLobbyMaxAgeMs: 2 * 60 * 1000 });
+      try {
+        await this.cleanupStaleRooms({ soloLobbyMaxAgeMs: 2 * 60 * 1000 });
+      } catch (error) {
+        console.warn("자동매칭 전 오래된 방 정리 실패:", error);
+      }
       await this.leaveExistingRooms();
 
       for (let attempt = 0; attempt < 5; attempt += 1) {
