@@ -64,7 +64,7 @@
         "$targetScore": {
           "$difficulty": {
             ".read": "auth != null",
-            ".write": "auth != null && ((newData.val() === null && data.child('players').child(auth.uid).exists()) || newData.child('players').child(auth.uid).val() === true)",
+            ".write": "auth != null && ((newData.val() === null && data.child('players').child(auth.uid).exists()) || newData.child('players').child(auth.uid).val() === true || (data.child('players').child(auth.uid).exists() && newData.child('roomCode').val() === data.child('roomCode').val()))",
             ".validate": "newData.val() === null || (($difficulty === 'basic' || $difficulty === 'power') && (($playerCount === '2' && newData.child('playerCount').val() === 2) || ($playerCount === '3' && newData.child('playerCount').val() === 3) || ($playerCount === '4' && newData.child('playerCount').val() === 4)) && (($targetScore === '100' && newData.child('targetScore').val() === 100) || ($targetScore === '200' && newData.child('targetScore').val() === 200) || ($targetScore === '300' && newData.child('targetScore').val() === 300) || ($targetScore === '500' && newData.child('targetScore').val() === 500)) && (newData.child('difficulty').val() === $difficulty) && newData.hasChildren(['roomCode', 'playerCount', 'targetScore', 'difficulty', 'players']))"
           }
         }

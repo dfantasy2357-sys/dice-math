@@ -766,9 +766,6 @@
         if (queueMatchesRoom) {
           updates[queuePath] = null;
         }
-        remainingPlayerIds.forEach((playerUid) => {
-          updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
-        });
         await this.database.ref().update(updates);
         const deletedSnapshot = await roomRef.once("value");
         return { removedRoom: !deletedSnapshot.exists() };

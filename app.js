@@ -132,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260611-security1";
+const APP_BUILD = "20260611-security-leave1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -1181,6 +1181,11 @@ function subscribeToFirebaseRoom(roomCode) {
     battleState.roomUnsubscribe = window.diceFirebase.watchRoom(roomCode, (room) => {
       if (!room) {
         clearRoomSubscription();
+        if (window.diceFirebase?.cleanupUserRooms) {
+          window.diceFirebase.cleanupUserRooms().catch((error) => {
+            console.warn("Firebase userRooms 정리 실패:", error);
+          });
+        }
         battleRuleNote.textContent = "방장이 나가서 방이 종료되었습니다.";
         openOnlineScreen();
         return;
