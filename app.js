@@ -132,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260610-user-profile1";
+const APP_BUILD = "20260611-match-cleanup1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -705,7 +705,12 @@ async function runFirebaseRoomCleanup() {
     const userRoomResult = window.diceFirebase.cleanupUserRooms
       ? await window.diceFirebase.cleanupUserRooms()
       : { removedCount: 0 };
-    const removedCount = Number(roomResult.removedCount || 0) + Number(userRoomResult.removedCount || 0);
+    const inactiveUserResult = window.diceFirebase.cleanupInactiveUsers
+      ? await window.diceFirebase.cleanupInactiveUsers()
+      : { removedCount: 0 };
+    const removedCount = Number(roomResult.removedCount || 0)
+      + Number(userRoomResult.removedCount || 0)
+      + Number(inactiveUserResult.removedCount || 0);
     if (removedCount > 0) {
       firebaseState.status = `Firebase 연결됨 · 오래된 기록 ${removedCount}개 정리`;
       renderOnlineProgress();
@@ -946,8 +951,7 @@ async function joinAutoMatch(playerCount, sourceButton) {
   await firebaseInitPromise;
 
   if (!firebaseState.ready || !window.diceFirebase?.isEnabled()) {
-    openBattleLobby(mode, playerCount);
-    battleRuleNote.textContent = `${getBattleRuleNote(mode)} · 목업 자동매칭`;
+    battleRuleNote.textContent = "Firebase 연결 후 자동매칭을 다시 시도해 주세요.";
     return;
   }
 
@@ -968,8 +972,7 @@ async function joinAutoMatch(playerCount, sourceButton) {
     battleRuleNote.textContent = `${getBattleRuleNote(mode)} · Firebase 자동매칭 대기 중`;
   } catch (error) {
     console.warn("Firebase 자동매칭 실패:", error);
-    openBattleLobby(mode, playerCount);
-    battleRuleNote.textContent = `${getBattleRuleNote(mode)} · Firebase 실패, 목업 매칭`;
+    battleRuleNote.textContent = "자동매칭에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   } finally {
     clearButtonBusy(sourceButton);
   }
@@ -1121,7 +1124,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleState.playerCount = playerCount;
   battleState.targetScore = normalizeBattleTargetScore(options.room?.targetScore || selectedBattleTargetScore);
   battleState.round = 0;
-  battleState.players = createMockPlayers(playerCount);
+  battleState.players = options.firebaseRoomCode || options.room ? [] : createMockPlayers(playerCount);
   battleState.phase = "lobby";
   battleState.firebaseRoomCode = options.firebaseRoomCode || null;
   battleState.isHost = options.isHost ?? !mode.includes("자동매칭");
@@ -1141,7 +1144,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleRuleNote.textContent = getBattleRuleNote(mode);
   if (options.room) applyFirebaseRoomSnapshot(options.room);
   else renderLobbyPlayers();
-  onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || battleState.players[0].name;
+  onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || battleState.players[0]?.name || getOnlineNickname();
   battleRoundPanel.hidden = true;
   battleResultSummary.hidden = true;
   battleResultList.hidden = true;

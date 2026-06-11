@@ -15,6 +15,8 @@
     return `cnm-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
   }
 
+  const inactiveUserMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
+
   function normalizeProfilePayload(profile = {}) {
     const targetScore = Math.min(500, Math.max(100, Number(profile.battleTargetScore || 200)));
     return {
@@ -130,7 +132,7 @@
         const publicId = createPublicId();
         const publicRef = this.database.ref(`publicUsers/${publicId}`);
         const result = await publicRef.transaction((current) => (
-          current ? current : { uid, createdAt: Date.now() }
+          current ? current : { uid, createdAt: Date.now(), updatedAt: Date.now() }
         ));
         if (result.committed && result.snapshot.val()?.uid === uid) {
           return publicId;
@@ -152,7 +154,12 @@
         await this.database.ref(`publicUsers/${existing.publicId}`).transaction((current) => (
           current ? current : { uid, createdAt: Date.now() }
         ));
-        return { uid, ...existing };
+        await userRef.child("updatedAt").set(now);
+        await this.database.ref(`publicUsers/${existing.publicId}`).update({
+          uid,
+          updatedAt: now,
+        });
+        return { uid, ...existing, updatedAt: now };
       }
 
       const publicId = await this.reservePublicId(uid);
@@ -163,6 +170,7 @@
         updatedAt: now,
       };
       await userRef.update(payload);
+      await this.database.ref(`publicUsers/${publicId}`).update({ uid, updatedAt: now });
       return { uid, ...payload };
     },
     async saveUserProfile(profile = {}) {
@@ -175,6 +183,44 @@
       };
       await this.database.ref(`users/${uid}`).update(payload);
       return payload;
+    },
+    async cleanupInactiveUsers({ maxAgeMs = inactiveUserMaxAgeMs } = {}) {
+      requireDatabase(this);
+
+      const uid = this.getUid();
+      const cutoff = Date.now() - maxAgeMs;
+      const usersSnapshot = await this.database.ref("users").once("value");
+      const users = usersSnapshot.val() || {};
+      const publicSnapshot = await this.database.ref("publicUsers").once("value");
+      const publicUsers = publicSnapshot.val() || {};
+      const updates = {};
+      let removedCount = 0;
+
+      Object.entries(users).forEach(([userUid, profile]) => {
+        if (userUid === uid) return;
+        const lastSeenAt = Number(profile?.updatedAt || profile?.createdAt || 0);
+        if (lastSeenAt <= 0 || lastSeenAt >= cutoff) return;
+
+        updates[`users/${userUid}`] = null;
+        updates[`userRooms/${userUid}`] = null;
+        if (profile?.publicId) {
+          updates[`publicUsers/${profile.publicId}`] = null;
+        }
+        removedCount += 1;
+      });
+
+      Object.entries(publicUsers).forEach(([publicId, publicUser]) => {
+        const publicUid = publicUser?.uid;
+        if (publicUid && !users[publicUid]) {
+          updates[`publicUsers/${publicId}`] = null;
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        await this.database.ref().update(updates);
+      }
+
+      return { removedCount };
     },
     async cleanupUserRooms() {
       requireDatabase(this);

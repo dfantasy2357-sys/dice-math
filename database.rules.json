@@ -1,0 +1,76 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": false,
+    "rooms": {
+      "$roomCode": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || (data.exists() && data.child('hostUid').val() === auth.uid) || (data.exists() && newData.val() === null && data.child('hostUid').val() === auth.uid))",
+        ".validate": "newData.val() === null || (newData.hasChildren(['code', 'mode', 'playerCount', 'phase', 'round', 'hostUid', 'players', 'targetScore']) && newData.child('code').val() === $roomCode && newData.child('playerCount').isNumber() && newData.child('playerCount').val() >= 2 && newData.child('playerCount').val() <= 4 && newData.child('round').isNumber() && newData.child('round').val() >= 0 && newData.child('hostUid').isString() && newData.child('targetScore').isNumber() && (newData.child('targetScore').val() === 100 || newData.child('targetScore').val() === 200 || newData.child('targetScore').val() === 300 || newData.child('targetScore').val() === 500))",
+        "players": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($roomCode).child('hostUid').val() === auth.uid)",
+            ".validate": "newData.val() === null || (newData.hasChildren(['name', 'score', 'status']) && newData.child('name').isString() && newData.child('name').val().length <= 10 && newData.child('score').isNumber() && newData.child('score').val() >= 0 && newData.child('score').val() <= 10000 && newData.child('status').isString())"
+          }
+        },
+        "submissions": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($roomCode).child('hostUid').val() === auth.uid)",
+            ".validate": "newData.val() === null || (newData.hasChildren(['expression', 'time', 'submittedAt']) && newData.child('expression').isString() && newData.child('expression').val().length <= 200 && newData.child('time').isNumber() && newData.child('time').val() >= 0 && newData.child('time').val() <= 120000)"
+          }
+        },
+        "updatedAt": {
+          ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+        },
+        "targetScore": {
+          ".validate": "newData.isNumber() && (newData.val() === 100 || newData.val() === 200 || newData.val() === 300 || newData.val() === 500)"
+        },
+        "roundResults": {
+          ".write": "auth != null && root.child('rooms').child($roomCode).child('hostUid').val() === auth.uid"
+        },
+        "finalResults": {
+          ".write": "auth != null && root.child('rooms').child($roomCode).child('hostUid').val() === auth.uid"
+        },
+        "phase": {
+          ".validate": "newData.isString() && (newData.val() === 'lobby' || newData.val() === 'playing' || newData.val() === 'result' || newData.val() === 'final')"
+        }
+      }
+    },
+    "userRooms": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || (root.child('users').child($uid).child('updatedAt').isNumber() && root.child('users').child($uid).child('updatedAt').val() < now - 2592000000) || (!root.child('users').child($uid).child('updatedAt').isNumber() && root.child('users').child($uid).child('createdAt').isNumber() && root.child('users').child($uid).child('createdAt').val() < now - 2592000000) || !root.child('users').child($uid).exists())",
+        "$roomCode": {
+          ".validate": "newData.val() === null || newData.hasChildren(['role', 'joinedAt'])"
+        }
+      }
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || (data.exists() && newData.val() === null && ((data.child('updatedAt').isNumber() && data.child('updatedAt').val() < now - 2592000000) || (!data.child('updatedAt').isNumber() && data.child('createdAt').isNumber() && data.child('createdAt').val() < now - 2592000000))))",
+        ".validate": "newData.val() === null || (newData.hasChildren(['publicId', 'nickname', 'clearCount', 'claimedSkins']) && newData.child('publicId').isString() && newData.child('nickname').isString() && newData.child('nickname').val().length <= 10 && newData.child('clearCount').isNumber() && newData.child('clearCount').val() >= 0 && newData.child('clearCount').val() <= 1000000)"
+      }
+    },
+    "publicUsers": {
+      "$publicId": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid) || (data.exists() && newData.val() === null && ((!root.child('users').child(data.child('uid').val()).exists()) || (root.child('users').child(data.child('uid').val()).child('updatedAt').isNumber() && root.child('users').child(data.child('uid').val()).child('updatedAt').val() < now - 2592000000) || (!root.child('users').child(data.child('uid').val()).child('updatedAt').isNumber() && root.child('users').child(data.child('uid').val()).child('createdAt').isNumber() && root.child('users').child(data.child('uid').val()).child('createdAt').val() < now - 2592000000))))",
+        ".validate": "newData.val() === null || (newData.hasChildren(['uid']) && newData.child('uid').isString())"
+      }
+    },
+    "matchQueues": {
+      "$playerCount": {
+        "$targetScore": {
+          ".read": "auth != null",
+          ".write": "auth != null && newData.val() === null",
+          "$difficulty": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            ".validate": "newData.val() === null || (($difficulty === 'basic' || $difficulty === 'power') && (($playerCount === '2' && newData.child('playerCount').val() === 2) || ($playerCount === '3' && newData.child('playerCount').val() === 3) || ($playerCount === '4' && newData.child('playerCount').val() === 4)) && (($targetScore === '100' && newData.child('targetScore').val() === 100) || ($targetScore === '200' && newData.child('targetScore').val() === 200) || ($targetScore === '300' && newData.child('targetScore').val() === 300) || ($targetScore === '500' && newData.child('targetScore').val() === 500)) && (newData.child('difficulty').val() === $difficulty) && newData.hasChildren(['roomCode', 'playerCount', 'targetScore', 'difficulty', 'players']))"
+          }
+        }
+      }
+    }
+  }
+}
