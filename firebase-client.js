@@ -770,8 +770,7 @@
       }
 
       if (isAutoMatch) {
-        const shouldDeleteAutoRoom = remainingPlayerIds.length === 0
-          || (remainingPlayerIds.length <= 1 && roomPhase !== "lobby");
+        const shouldDeleteAutoRoom = remainingPlayerIds.length <= 1;
         if (shouldDeleteAutoRoom) {
           const updates = {
             [`rooms/${normalizedCode}`]: null,
@@ -779,9 +778,6 @@
           if (queueMatchesRoom) {
             updates[queuePath] = null;
           }
-          remainingPlayerIds.forEach((playerUid) => {
-            updates[`userRooms/${playerUid}/${normalizedCode}`] = null;
-          });
           await this.database.ref().update(updates);
           const deletedSnapshot = await roomRef.once("value");
           return { removedRoom: !deletedSnapshot.exists() };

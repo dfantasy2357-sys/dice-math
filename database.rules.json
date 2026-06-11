@@ -5,7 +5,7 @@
     "rooms": {
       "$roomCode": {
         ".read": "auth != null",
-        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || (data.exists() && data.child('hostUid').val() === auth.uid) || (data.exists() && newData.val() === null && data.child('hostUid').val() === auth.uid))",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || (data.exists() && data.child('hostUid').val() === auth.uid) || (data.exists() && newData.val() === null && data.child('hostUid').val() === auth.uid) || (data.exists() && newData.val() === null && data.child('matchmaking').val() === true && data.child('players').child(auth.uid).exists()))",
         ".validate": "newData.val() === null || (newData.hasChildren(['code', 'mode', 'playerCount', 'phase', 'round', 'hostUid', 'players', 'targetScore']) && newData.child('code').val() === $roomCode && newData.child('playerCount').isNumber() && newData.child('playerCount').val() >= 2 && newData.child('playerCount').val() <= 4 && newData.child('round').isNumber() && newData.child('round').val() >= 0 && newData.child('hostUid').isString() && newData.child('targetScore').isNumber() && (newData.child('targetScore').val() === 100 || newData.child('targetScore').val() === 200 || newData.child('targetScore').val() === 300 || newData.child('targetScore').val() === 500))",
         "players": {
           "$uid": {

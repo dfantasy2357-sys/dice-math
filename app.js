@@ -132,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260611-match-cleanup2";
+const APP_BUILD = "20260611-auto-leave1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -1163,6 +1163,11 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
 }
 
 async function leaveCurrentRoom() {
+  await leaveFirebaseRoomIfNeeded();
+  openOnlineScreen();
+}
+
+async function leaveFirebaseRoomIfNeeded() {
   const roomCode = battleState.firebaseRoomCode;
   const canLeaveFirebaseRoom = Boolean(roomCode && firebaseState.ready && window.diceFirebase?.isEnabled());
 
@@ -1175,8 +1180,6 @@ async function leaveCurrentRoom() {
       console.warn("Firebase 방 나가기 실패:", error);
     }
   }
-
-  openOnlineScreen();
 }
 
 function subscribeToFirebaseRoom(roomCode) {
@@ -2407,6 +2410,7 @@ function openGameScreen() {
 }
 
 function openHome() {
+  void leaveFirebaseRoomIfNeeded();
   closeSoloSheet();
   closeSettingsSheet();
   closeOnlineDifficultySheet();
