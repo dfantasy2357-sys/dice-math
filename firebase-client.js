@@ -770,7 +770,10 @@
       }
 
       if (isAutoMatch) {
-        const shouldDeleteAutoRoom = remainingPlayerIds.length <= 1;
+        const shouldKeepSoloLobby = roomPhase === "lobby"
+          && roomPlayerCount > 2
+          && remainingPlayerIds.length === 1;
+        const shouldDeleteAutoRoom = remainingPlayerIds.length <= 1 && !shouldKeepSoloLobby;
         if (shouldDeleteAutoRoom) {
           const updates = {
             [`rooms/${normalizedCode}`]: null,
@@ -789,18 +792,22 @@
             .sort((a, b) => Number(remainingPlayers[a]?.joinedAt || 0) - Number(remainingPlayers[b]?.joinedAt || 0))[0];
         const updates = {
           [`rooms/${normalizedCode}/players/${uid}`]: null,
-          [`rooms/${normalizedCode}/hostUid`]: nextHostUid,
-          [`rooms/${normalizedCode}/phase`]: roomPhase === "lobby" ? "lobby" : room.phase,
           [`rooms/${normalizedCode}/updatedAt`]: window.firebase.database.ServerValue.TIMESTAMP,
         };
+        if (isHost) {
+          updates[`rooms/${normalizedCode}/hostUid`] = nextHostUid;
+          updates[`rooms/${normalizedCode}/phase`] = roomPhase === "lobby" ? "lobby" : room.phase;
+        }
         if (queueMatchesRoom) {
           updates[`${queuePath}/players/${uid}`] = null;
           updates[`${queuePath}/count`] = remainingPlayerIds.length;
           updates[`${queuePath}/updatedAt`] = window.firebase.database.ServerValue.TIMESTAMP;
         }
-        remainingPlayerIds.forEach((playerUid) => {
-          updates[`rooms/${normalizedCode}/players/${playerUid}/isHost`] = playerUid === nextHostUid;
-        });
+        if (isHost) {
+          remainingPlayerIds.forEach((playerUid) => {
+            updates[`rooms/${normalizedCode}/players/${playerUid}/isHost`] = playerUid === nextHostUid;
+          });
+        }
 
         await this.database.ref().update(updates);
         return { removedRoom: false };

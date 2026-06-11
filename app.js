@@ -132,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260611-auto-leave1";
+const APP_BUILD = "20260611-wait-zoom1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;

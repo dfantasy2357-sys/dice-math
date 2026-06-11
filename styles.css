@@ -38,6 +38,13 @@ button {
   color: inherit;
 }
 
+button,
+.operator-bar,
+.expression-preview,
+.game-board {
+  touch-action: manipulation;
+}
+
 .app-frame {
   position: relative;
   width: min(100%, 520px);
