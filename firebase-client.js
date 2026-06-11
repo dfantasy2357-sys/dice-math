@@ -12,7 +12,7 @@
   }
 
   function createPublicId() {
-    return `cnm-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
+    return `cnm-${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`;
   }
 
   const inactiveUserMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
@@ -233,8 +233,13 @@
 
       for (const code of Object.keys(userRooms)) {
         const normalizedCode = String(code || "").trim().toUpperCase();
-        const roomSnapshot = await this.database.ref(`rooms/${normalizedCode}`).once("value");
-        const room = roomSnapshot.val();
+        let room = null;
+        try {
+          const roomSnapshot = await this.database.ref(`rooms/${normalizedCode}`).once("value");
+          room = roomSnapshot.val();
+        } catch (error) {
+          room = null;
+        }
         if (!room || !room.players?.[uid]) {
           updates[`userRooms/${uid}/${normalizedCode}`] = null;
           removedCount += 1;

@@ -132,7 +132,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260611-wait-zoom1";
+const APP_BUILD = "20260611-security1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
@@ -698,19 +698,11 @@ async function saveUserProfileNow() {
 }
 
 async function runFirebaseRoomCleanup() {
-  if (!window.diceFirebase?.cleanupStaleRooms) return;
+  if (!window.diceFirebase?.cleanupUserRooms) return;
 
   try {
-    const roomResult = await window.diceFirebase.cleanupStaleRooms();
-    const userRoomResult = window.diceFirebase.cleanupUserRooms
-      ? await window.diceFirebase.cleanupUserRooms()
-      : { removedCount: 0 };
-    const inactiveUserResult = window.diceFirebase.cleanupInactiveUsers
-      ? await window.diceFirebase.cleanupInactiveUsers()
-      : { removedCount: 0 };
-    const removedCount = Number(roomResult.removedCount || 0)
-      + Number(userRoomResult.removedCount || 0)
-      + Number(inactiveUserResult.removedCount || 0);
+    const userRoomResult = await window.diceFirebase.cleanupUserRooms();
+    const removedCount = Number(userRoomResult.removedCount || 0);
     if (removedCount > 0) {
       firebaseState.status = `Firebase 연결됨 · 오래된 기록 ${removedCount}개 정리`;
       renderOnlineProgress();
