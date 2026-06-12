@@ -21,6 +21,10 @@
     return Number(value) === 60000 ? 60000 : onlineTimeLimitMs;
   }
 
+  function normalizeSoloTimeLimit(value) {
+    return Number(value) === 0 ? 0 : normalizeTimeLimit(value);
+  }
+
   function normalizeProfilePayload(profile = {}) {
     const targetScore = Math.min(500, Math.max(100, Number(profile.battleTargetScore || 200)));
     return {
@@ -31,7 +35,7 @@
       selectedDifficulty: profile.selectedDifficulty === "power" ? "power" : "basic",
       selectedOnlineDifficulty: profile.selectedOnlineDifficulty === "power" ? "power" : "basic",
       battleTargetScore: [100, 200, 300, 500].includes(targetScore) ? targetScore : 200,
-      soloTimeLimit: normalizeTimeLimit(profile.soloTimeLimit),
+      soloTimeLimit: normalizeSoloTimeLimit(profile.soloTimeLimit),
       roomTimeLimit: normalizeTimeLimit(profile.roomTimeLimit),
       soundEnabled: profile.soundEnabled !== false,
     };

@@ -136,10 +136,11 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260612-solo-timeout1";
+const APP_BUILD = "20260612-solo-unlimited1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const DEFAULT_TIME_LIMIT_MS = 120000;
 const SHORT_TIME_LIMIT_MS = 60000;
+const UNLIMITED_TIME_LIMIT_MS = 0;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
 const DEFAULT_BATTLE_TARGET_SCORE = 200;
@@ -213,7 +214,7 @@ let selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
 let selectedOnlineDifficulty = localStorage.getItem("diceMath.onlineDifficulty") || "basic";
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
-let selectedSoloTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || DEFAULT_TIME_LIMIT_MS);
+let selectedSoloTimeLimit = normalizeSoloTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || DEFAULT_TIME_LIMIT_MS);
 let selectedRoomTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.roomTimeLimit") || DEFAULT_TIME_LIMIT_MS);
 let soundEnabled = localStorage.getItem("diceMath.soundEnabled") !== "false";
 let firebaseUserProfile = null;
@@ -328,7 +329,7 @@ difficultyCards.forEach((button) => {
 });
 soloTimeLimitButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    selectedSoloTimeLimit = normalizeTimeLimit(button.dataset.soloTimeLimit);
+    selectedSoloTimeLimit = normalizeSoloTimeLimit(button.dataset.soloTimeLimit);
     localStorage.setItem("diceMath.soloTimeLimit", String(selectedSoloTimeLimit));
     renderSoloTimeLimitOptions();
     scheduleUserProfileSave();
@@ -674,7 +675,7 @@ function applyUserProfile(profile = {}) {
   selectedDifficulty = profile.selectedDifficulty === "power" ? "power" : "basic";
   selectedOnlineDifficulty = profile.selectedOnlineDifficulty === "power" ? "power" : "basic";
   selectedBattleTargetScore = normalizeBattleTargetScore(profile.battleTargetScore || DEFAULT_BATTLE_TARGET_SCORE);
-  selectedSoloTimeLimit = normalizeTimeLimit(profile.soloTimeLimit || DEFAULT_TIME_LIMIT_MS);
+  selectedSoloTimeLimit = normalizeSoloTimeLimit(profile.soloTimeLimit ?? DEFAULT_TIME_LIMIT_MS);
   selectedRoomTimeLimit = normalizeTimeLimit(profile.roomTimeLimit || DEFAULT_TIME_LIMIT_MS);
   soundEnabled = profile.soundEnabled !== false;
   selectedSkin = skinClasses.includes(`theme-${profile.selectedSkin}`) ? profile.selectedSkin : "basic";
@@ -890,6 +891,12 @@ function normalizeTimeLimit(value) {
   return limit === SHORT_TIME_LIMIT_MS ? SHORT_TIME_LIMIT_MS : DEFAULT_TIME_LIMIT_MS;
 }
 
+function normalizeSoloTimeLimit(value) {
+  const limit = Number(value ?? DEFAULT_TIME_LIMIT_MS);
+  if (limit === UNLIMITED_TIME_LIMIT_MS) return UNLIMITED_TIME_LIMIT_MS;
+  return normalizeTimeLimit(limit);
+}
+
 function renderBattleGoalOptions() {
   battleGoalButtons.forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.scoreGoal) === selectedBattleTargetScore);
@@ -898,7 +905,7 @@ function renderBattleGoalOptions() {
 
 function renderSoloTimeLimitOptions() {
   soloTimeLimitButtons.forEach((button) => {
-    button.classList.toggle("active", normalizeTimeLimit(button.dataset.soloTimeLimit) === selectedSoloTimeLimit);
+    button.classList.toggle("active", normalizeSoloTimeLimit(button.dataset.soloTimeLimit) === selectedSoloTimeLimit);
   });
 }
 
@@ -910,7 +917,7 @@ function renderRoomTimeLimitOptions() {
 
 function openSoloSheet() {
   selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
-  selectedSoloTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || selectedSoloTimeLimit);
+  selectedSoloTimeLimit = normalizeSoloTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") ?? selectedSoloTimeLimit);
   renderDifficulty();
   renderSoloTimeLimitOptions();
   soloSheet.hidden = false;
@@ -3336,10 +3343,10 @@ function stopTimer() {
 function updateTimer() {
   if (!game.startedAt) return;
   const elapsed = performance.now() - game.startedAt;
-  const limit = game.mode === "solo" ? normalizeTimeLimit(game.timeLimit) : elapsed;
-  game.elapsed = game.mode === "solo" ? Math.min(elapsed, limit) : elapsed;
+  const limit = game.mode === "solo" ? normalizeSoloTimeLimit(game.timeLimit) : elapsed;
+  game.elapsed = game.mode === "solo" && limit > 0 ? Math.min(elapsed, limit) : elapsed;
   gameTimer.textContent = formatTime(game.elapsed);
-  if (game.mode === "solo" && elapsed >= limit) {
+  if (game.mode === "solo" && limit > 0 && elapsed >= limit) {
     handleSoloTimeout();
   }
 }
