@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260611-security-leave1">
+  <link rel="manifest" href="manifest.webmanifest?v=20260612-time-select1">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260611-security-leave1">
+  <link rel="stylesheet" href="styles.css?v=20260612-time-select1">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -150,6 +150,11 @@
           <button type="button" data-score-goal="300">300점</button>
           <button type="button" data-score-goal="500">500점</button>
         </div>
+        <span>방 제한시간</span>
+        <div class="battle-goal-options" id="roomTimeLimitOptions">
+          <button type="button" data-room-time-limit="60000">60초</button>
+          <button class="active" type="button" data-room-time-limit="120000">120초</button>
+        </div>
       </section>
 
       <section class="online-menu" aria-label="온라인 대전 메뉴">
@@ -207,7 +212,7 @@
         <div class="score-board" id="scoreBoard" aria-label="누적 점수판"></div>
         <section class="battle-round-panel" id="battleRoundPanel" aria-label="온라인 라운드 진행" hidden>
           <div class="battle-time-row">
-            <strong>제한시간 120초</strong>
+            <strong id="battleTimeLimitLabel">제한시간 120초</strong>
             <span class="battle-room-code" id="battleRoomCode">코드 A7K2Q9</span>
             <span id="battleElapsed">00.00</span>
           </div>
@@ -398,7 +403,7 @@
           </div>
           <div>
             <span>버전</span>
-            <strong id="settingsVersion">20260611-security-leave1</strong>
+            <strong id="settingsVersion">20260612-time-select1</strong>
           </div>
         </div>
 
@@ -528,6 +533,10 @@
             <strong>지수 포함</strong>
           </button>
         </div>
+        <div class="battle-goal-options solo-time-options" id="soloTimeLimitOptions">
+          <button type="button" data-solo-time-limit="60000">60초</button>
+          <button class="active" type="button" data-solo-time-limit="120000">120초</button>
+        </div>
         <button class="sheet-start" id="sheetStart" type="button">시작하기</button>
       </div>
     </section>
@@ -581,8 +590,8 @@
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=20260611-security-leave1"></script>
-  <script src="firebase-client.js?v=20260611-security-leave1"></script>
-  <script src="app.js?v=20260611-security-leave1"></script>
+  <script src="firebase-config.js?v=20260612-time-select1"></script>
+  <script src="firebase-client.js?v=20260612-time-select1"></script>
+  <script src="app.js?v=20260612-time-select1"></script>
 </body>
 </html>

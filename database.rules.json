@@ -25,6 +25,9 @@
         "targetScore": {
           ".validate": "newData.isNumber() && (newData.val() === 100 || newData.val() === 200 || newData.val() === 300 || newData.val() === 500)"
         },
+        "timeLimit": {
+          ".validate": "newData.isNumber() && (newData.val() === 60000 || newData.val() === 120000)"
+        },
         "roundResults": {
           ".write": "auth != null && root.child('rooms').child($roomCode).child('hostUid').val() === auth.uid"
         },

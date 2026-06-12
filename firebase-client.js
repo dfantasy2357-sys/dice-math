@@ -17,6 +17,10 @@
 
   const inactiveUserMaxAgeMs = 30 * 24 * 60 * 60 * 1000;
 
+  function normalizeTimeLimit(value) {
+    return Number(value) === 60000 ? 60000 : onlineTimeLimitMs;
+  }
+
   function normalizeProfilePayload(profile = {}) {
     const targetScore = Math.min(500, Math.max(100, Number(profile.battleTargetScore || 200)));
     return {
@@ -27,6 +31,8 @@
       selectedDifficulty: profile.selectedDifficulty === "power" ? "power" : "basic",
       selectedOnlineDifficulty: profile.selectedOnlineDifficulty === "power" ? "power" : "basic",
       battleTargetScore: [100, 200, 300, 500].includes(targetScore) ? targetScore : 200,
+      soloTimeLimit: normalizeTimeLimit(profile.soloTimeLimit),
+      roomTimeLimit: normalizeTimeLimit(profile.roomTimeLimit),
       soundEnabled: profile.soundEnabled !== false,
     };
   }
@@ -280,6 +286,7 @@
       matchmaking = false,
       difficulty = "basic",
       targetScore = 200,
+      timeLimit = onlineTimeLimitMs,
       code: preferredCode = "",
       skipLeaveExistingRooms = false,
     }) {
@@ -302,6 +309,7 @@
           matchmaking: Boolean(matchmaking),
           difficulty: difficulty === "power" ? "power" : "basic",
           targetScore: Math.min(500, Math.max(100, Number(targetScore || 200))),
+          timeLimit: normalizeTimeLimit(timeLimit),
           phase: "lobby",
           round: 0,
           hostUid: uid,
@@ -568,6 +576,8 @@
       const uid = this.getUid();
       const now = window.firebase.database.ServerValue.TIMESTAMP;
       const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const roomSnapshot = await roomRef.once("value");
+      const timeLimit = normalizeTimeLimit(roomSnapshot.val()?.timeLimit);
       await roomRef.update({
         [`players/${uid}/status`]: "완료",
         [`submissions/${uid}/expression`]: expression,
@@ -583,10 +593,12 @@
       const uid = this.getUid();
       const now = window.firebase.database.ServerValue.TIMESTAMP;
       const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const roomSnapshot = await roomRef.once("value");
+      const timeLimit = normalizeTimeLimit(roomSnapshot.val()?.timeLimit);
       await roomRef.update({
         [`players/${uid}/status`]: "시간초과",
         [`submissions/${uid}/expression`]: "",
-        [`submissions/${uid}/time`]: onlineTimeLimitMs,
+        [`submissions/${uid}/time`]: timeLimit,
         [`submissions/${uid}/timedOut`]: true,
         [`submissions/${uid}/submittedAt`]: now,
         updatedAt: now,
@@ -601,11 +613,13 @@
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
       const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const roomSnapshot = await roomRef.once("value");
+      const timeLimit = normalizeTimeLimit(roomSnapshot.val()?.timeLimit);
       const updates = { updatedAt: now };
       ids.forEach((playerUid) => {
         updates[`players/${playerUid}/status`] = "시간초과";
         updates[`submissions/${playerUid}/expression`] = "";
-        updates[`submissions/${playerUid}/time`] = onlineTimeLimitMs;
+        updates[`submissions/${playerUid}/time`] = timeLimit;
         updates[`submissions/${playerUid}/timedOut`] = true;
         updates[`submissions/${playerUid}/submittedAt`] = now;
       });

@@ -40,6 +40,7 @@ const joinCodeInput = document.querySelector("#joinCodeInput");
 const joinCodeSubmit = document.querySelector("#joinCodeSubmit");
 const matchSizeButtons = document.querySelectorAll("[data-match-size]");
 const battleGoalButtons = document.querySelectorAll("[data-score-goal]");
+const roomTimeLimitButtons = document.querySelectorAll("[data-room-time-limit]");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
 const playerList = document.querySelector("#playerList");
@@ -49,6 +50,7 @@ const scoreBoard = document.querySelector("#scoreBoard");
 const onlineReadyButton = document.querySelector("#onlineReadyButton");
 const hostControlButton = document.querySelector("#hostControlButton");
 const battleRoundPanel = document.querySelector("#battleRoundPanel");
+const battleTimeLimitLabel = document.querySelector("#battleTimeLimitLabel");
 const battleRoomCode = document.querySelector("#battleRoomCode");
 const battleElapsed = document.querySelector("#battleElapsed");
 const battleStatusList = document.querySelector("#battleStatusList");
@@ -80,6 +82,7 @@ const sheetBackdrop = document.querySelector("#sheetBackdrop");
 const sheetClose = document.querySelector("#sheetClose");
 const sheetStart = document.querySelector("#sheetStart");
 const difficultyCards = document.querySelectorAll("[data-difficulty]");
+const soloTimeLimitButtons = document.querySelectorAll("[data-solo-time-limit]");
 const soloClearCount = document.querySelector("#soloClearCount");
 const unlockText = document.querySelector("#unlockText");
 const unlockFill = document.querySelector("#unlockFill");
@@ -132,8 +135,10 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260611-security-leave1";
+const APP_BUILD = "20260612-time-select1";
 const BATTLE_TIME_LIMIT_MS = 120000;
+const DEFAULT_TIME_LIMIT_MS = 120000;
+const SHORT_TIME_LIMIT_MS = 60000;
 const SOLO_LOBBY_MAX_WAIT_MS = 120000;
 const FIREBASE_REVEAL_DELAY_MS = 3000;
 const DEFAULT_BATTLE_TARGET_SCORE = 200;
@@ -199,6 +204,7 @@ const game = {
   timerId: null,
   startedAt: null,
   elapsed: 0,
+  timeLimit: DEFAULT_TIME_LIMIT_MS,
   mode: "solo",
 };
 
@@ -206,6 +212,8 @@ let selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
 let selectedOnlineDifficulty = localStorage.getItem("diceMath.onlineDifficulty") || "basic";
 let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
+let selectedSoloTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || DEFAULT_TIME_LIMIT_MS);
+let selectedRoomTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.roomTimeLimit") || DEFAULT_TIME_LIMIT_MS);
 let soundEnabled = localStorage.getItem("diceMath.soundEnabled") !== "false";
 let firebaseUserProfile = null;
 let firebaseProfileReady = false;
@@ -217,6 +225,7 @@ const battleState = {
   roomMode: "비공개 친구 방",
   playerCount: 4,
   targetScore: DEFAULT_BATTLE_TARGET_SCORE,
+  timeLimit: DEFAULT_TIME_LIMIT_MS,
   round: 0,
   players: [],
   phase: "lobby",
@@ -259,6 +268,8 @@ renderProgress();
 renderDifficulty();
 renderOnlineDifficulty();
 renderBattleGoalOptions();
+renderSoloTimeLimitOptions();
+renderRoomTimeLimitOptions();
 applySkin(selectedSkin, { closeSheet: false });
 renderGame();
 
@@ -314,6 +325,14 @@ difficultyCards.forEach((button) => {
     scheduleUserProfileSave();
   });
 });
+soloTimeLimitButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedSoloTimeLimit = normalizeTimeLimit(button.dataset.soloTimeLimit);
+    localStorage.setItem("diceMath.soloTimeLimit", String(selectedSoloTimeLimit));
+    renderSoloTimeLimitOptions();
+    scheduleUserProfileSave();
+  });
+});
 
 soloButton.addEventListener("click", openSoloSheet);
 onlineButton.addEventListener("click", openOnlineDifficultySheet);
@@ -335,6 +354,14 @@ battleGoalButtons.forEach((button) => {
     selectedBattleTargetScore = normalizeBattleTargetScore(button.dataset.scoreGoal);
     localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
     renderBattleGoalOptions();
+    scheduleUserProfileSave();
+  });
+});
+roomTimeLimitButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedRoomTimeLimit = normalizeTimeLimit(button.dataset.roomTimeLimit);
+    localStorage.setItem("diceMath.roomTimeLimit", String(selectedRoomTimeLimit));
+    renderRoomTimeLimitOptions();
     scheduleUserProfileSave();
   });
 });
@@ -618,6 +645,8 @@ function getLocalUserProfile() {
     selectedDifficulty,
     selectedOnlineDifficulty,
     battleTargetScore: selectedBattleTargetScore,
+    soloTimeLimit: selectedSoloTimeLimit,
+    roomTimeLimit: selectedRoomTimeLimit,
     soundEnabled,
   };
 }
@@ -644,6 +673,8 @@ function applyUserProfile(profile = {}) {
   selectedDifficulty = profile.selectedDifficulty === "power" ? "power" : "basic";
   selectedOnlineDifficulty = profile.selectedOnlineDifficulty === "power" ? "power" : "basic";
   selectedBattleTargetScore = normalizeBattleTargetScore(profile.battleTargetScore || DEFAULT_BATTLE_TARGET_SCORE);
+  selectedSoloTimeLimit = normalizeTimeLimit(profile.soloTimeLimit || DEFAULT_TIME_LIMIT_MS);
+  selectedRoomTimeLimit = normalizeTimeLimit(profile.roomTimeLimit || DEFAULT_TIME_LIMIT_MS);
   soundEnabled = profile.soundEnabled !== false;
   selectedSkin = skinClasses.includes(`theme-${profile.selectedSkin}`) ? profile.selectedSkin : "basic";
 
@@ -652,6 +683,8 @@ function applyUserProfile(profile = {}) {
   localStorage.setItem("diceMath.difficulty", selectedDifficulty);
   localStorage.setItem("diceMath.onlineDifficulty", selectedOnlineDifficulty);
   localStorage.setItem("diceMath.battleTargetScore", String(selectedBattleTargetScore));
+  localStorage.setItem("diceMath.soloTimeLimit", String(selectedSoloTimeLimit));
+  localStorage.setItem("diceMath.roomTimeLimit", String(selectedRoomTimeLimit));
   localStorage.setItem("diceMath.soundEnabled", String(soundEnabled));
   localStorage.setItem("diceMath.skin", selectedSkin);
 
@@ -660,6 +693,8 @@ function applyUserProfile(profile = {}) {
   renderDifficulty();
   renderOnlineDifficulty();
   renderBattleGoalOptions();
+  renderSoloTimeLimitOptions();
+  renderRoomTimeLimitOptions();
   renderSettings();
 
   suppressProfileSave = false;
@@ -849,15 +884,34 @@ function normalizeBattleTargetScore(value) {
   return DEFAULT_BATTLE_TARGET_SCORE;
 }
 
+function normalizeTimeLimit(value) {
+  const limit = Number(value || DEFAULT_TIME_LIMIT_MS);
+  return limit === SHORT_TIME_LIMIT_MS ? SHORT_TIME_LIMIT_MS : DEFAULT_TIME_LIMIT_MS;
+}
+
 function renderBattleGoalOptions() {
   battleGoalButtons.forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.scoreGoal) === selectedBattleTargetScore);
   });
 }
 
+function renderSoloTimeLimitOptions() {
+  soloTimeLimitButtons.forEach((button) => {
+    button.classList.toggle("active", normalizeTimeLimit(button.dataset.soloTimeLimit) === selectedSoloTimeLimit);
+  });
+}
+
+function renderRoomTimeLimitOptions() {
+  roomTimeLimitButtons.forEach((button) => {
+    button.classList.toggle("active", normalizeTimeLimit(button.dataset.roomTimeLimit) === selectedRoomTimeLimit);
+  });
+}
+
 function openSoloSheet() {
   selectedDifficulty = localStorage.getItem("diceMath.difficulty") || "basic";
+  selectedSoloTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || selectedSoloTimeLimit);
   renderDifficulty();
+  renderSoloTimeLimitOptions();
   soloSheet.hidden = false;
 }
 
@@ -921,6 +975,7 @@ async function createOnlineRoom(mode, playerCount, sourceButton) {
       nickname: getOnlineNickname(),
       difficulty: selectedOnlineDifficulty,
       targetScore: selectedBattleTargetScore,
+      timeLimit: selectedRoomTimeLimit,
     });
     openBattleLobby(mode, playerCount, result.code, {
       firebaseRoomCode: result.code,
@@ -1115,6 +1170,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleState.roomMode = mode;
   battleState.playerCount = playerCount;
   battleState.targetScore = normalizeBattleTargetScore(options.room?.targetScore || selectedBattleTargetScore);
+  battleState.timeLimit = normalizeTimeLimit(options.room?.timeLimit || selectedRoomTimeLimit);
   battleState.round = 0;
   battleState.players = options.firebaseRoomCode || options.room ? [] : createMockPlayers(playerCount);
   battleState.phase = "lobby";
@@ -1151,6 +1207,7 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   updateRoomActionState();
   updateHostControlButton();
   renderScoreBoard();
+  renderBattleTimeLimit();
   setOnlinePhase("lobby");
 }
 
@@ -1278,6 +1335,7 @@ function applyFirebaseRoomSnapshot(room) {
 
   battleState.roomMode = room.mode || battleState.roomMode;
   battleState.targetScore = normalizeBattleTargetScore(room.targetScore || battleState.targetScore);
+  battleState.timeLimit = normalizeTimeLimit(room.timeLimit || battleState.timeLimit);
   battleState.firebaseRoomSnapshot = room;
   battleState.playerCount = Number(room.playerCount || battleState.playerCount);
   battleState.round = incomingRound;
@@ -1293,6 +1351,7 @@ function applyFirebaseRoomSnapshot(room) {
   onlinePlayerName.textContent = getCurrentBattlePlayer()?.name || getOnlineNickname();
   renderLobbyPlayers();
   renderScoreBoard();
+  renderBattleTimeLimit();
   updateRoomActionState();
   updateHostControlButton();
   scheduleSoloLobbyWaitTimer(room);
@@ -1492,12 +1551,27 @@ function getFirebaseSolveStartedAt(room) {
 
 function getFirebaseRoundElapsedMs() {
   if (!battleState.firebaseSolveStartedAt) return 0;
-  return Math.max(0, Math.min(BATTLE_TIME_LIMIT_MS, getFirebaseNow() - battleState.firebaseSolveStartedAt));
+  const limit = getBattleTimeLimitMs();
+  return Math.max(0, Math.min(limit, getFirebaseNow() - battleState.firebaseSolveStartedAt));
 }
 
 function getBattleElapsedMs() {
   if (battleState.firebaseRoomCode) return getFirebaseRoundElapsedMs();
   return Math.max(0, performance.now() - battleState.roundStartedAt);
+}
+
+function getBattleTimeLimitMs() {
+  return normalizeTimeLimit(battleState.timeLimit || DEFAULT_TIME_LIMIT_MS);
+}
+
+function getTimeLimitSeconds(limit = getBattleTimeLimitMs()) {
+  return Math.round(normalizeTimeLimit(limit) / 1000);
+}
+
+function renderBattleTimeLimit() {
+  if (battleTimeLimitLabel) {
+    battleTimeLimitLabel.textContent = `제한시간 ${getTimeLimitSeconds()}초`;
+  }
 }
 
 function startFirebaseRoundClock(room) {
@@ -1508,8 +1582,9 @@ function startFirebaseRoundClock(room) {
 
   const updateClock = () => {
     const elapsed = getFirebaseRoundElapsedMs();
+    const limit = getBattleTimeLimitMs();
     updateBattleElapsed(elapsed);
-    if (elapsed >= BATTLE_TIME_LIMIT_MS) {
+    if (elapsed >= limit) {
       maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
       handleFirebaseRoundTimeout();
     }
@@ -1517,14 +1592,15 @@ function startFirebaseRoundClock(room) {
 
   updateClock();
   battleState.roundTimerId = window.setInterval(updateClock, 250);
-  battleState.roundEndTimerId = window.setTimeout(updateClock, Math.max(0, BATTLE_TIME_LIMIT_MS - getFirebaseRoundElapsedMs()));
+  battleState.roundEndTimerId = window.setTimeout(updateClock, Math.max(0, getBattleTimeLimitMs() - getFirebaseRoundElapsedMs()));
 }
 
 function syncFirebaseRoundClock() {
   if (battleState.phase !== "playing" || !battleState.firebaseRoomCode || !battleState.firebaseSolveStartedAt) return;
   const elapsed = getFirebaseRoundElapsedMs();
+  const limit = getBattleTimeLimitMs();
   updateBattleElapsed(elapsed);
-  if (elapsed >= BATTLE_TIME_LIMIT_MS) {
+  if (elapsed >= limit) {
     maybeSubmitFirebaseTimeouts(battleState.firebaseRoomSnapshot);
     handleFirebaseRoundTimeout();
   }
@@ -1547,6 +1623,7 @@ function enterFirebaseRound(room) {
   battleAdSlot.hidden = true;
   battleCountdownLayer.hidden = true;
   battleElapsed.textContent = "00.00";
+  renderBattleTimeLimit();
   lobbyModeLabel.textContent = `${battleState.roomMode} · ${Number(room.round || battleState.round)}라운드`;
   updateBattleRoomCode(room.code || battleState.firebaseRoomCode);
   if (room.currentProblem) {
@@ -1658,7 +1735,7 @@ async function handleFirebaseRoundTimeout() {
 
   game.isSolved = true;
   battleState.statusMap[me.id] = "시간초과";
-  stopBattleRoundTimerAt(BATTLE_TIME_LIMIT_MS);
+  stopBattleRoundTimerAt(getBattleTimeLimitMs());
   setBattleInputEnabled(false);
   setFeedback("시간초과! 이번 라운드는 시간초과로 제출됩니다.", "error");
   renderGame();
@@ -1732,7 +1809,7 @@ function handleFirebaseRoundCompletion(room) {
 async function maybeSubmitFirebaseTimeouts(room, players = getFirebaseRoundPlayerEntries(room)) {
   if (!room) return;
   if (!battleState.firebaseRoomCode || !firebaseState.ready || !window.diceFirebase?.submitTimeouts) return;
-  if (getFirebaseRoundElapsedMs() < BATTLE_TIME_LIMIT_MS) return;
+  if (getFirebaseRoundElapsedMs() < getBattleTimeLimitMs()) return;
 
   const timedOutIds = players
     .filter(([, player]) => !isFirebasePlayerDone(player))
@@ -1797,8 +1874,8 @@ function createFirebaseRoundResults(room) {
       name: player.name || "이름 없음",
       rankLabel: "초과",
       points: 5,
-      time: BATTLE_TIME_LIMIT_MS,
-      timeLabel: formatTime(BATTLE_TIME_LIMIT_MS),
+      time: getBattleTimeLimitMs(),
+      timeLabel: formatTime(getBattleTimeLimitMs()),
       expression: "",
       timedOut: true,
     }));
@@ -2131,7 +2208,7 @@ function revealBattleRound() {
   battleState.statusTimerIds = battleState.players.slice(1).map((player, index) => (
     window.setTimeout(() => submitMockOpponent(player, index), 5600 + index * 2100)
   ));
-  battleState.roundEndTimerId = window.setTimeout(finishBattleRoundByTimeout, BATTLE_TIME_LIMIT_MS);
+  battleState.roundEndTimerId = window.setTimeout(finishBattleRoundByTimeout, getBattleTimeLimitMs());
 }
 
 function renderBattleStatuses(statusMap = {}) {
@@ -2157,7 +2234,7 @@ function renderBattleStatuses(statusMap = {}) {
 function submitMockOpponent(player, index) {
   if (battleState.phase !== "playing") return;
   const expression = findBasicSolution(game.dice.map((die) => die.value), game.target) || "검증 완료 식";
-  const time = Math.min(performance.now() - battleState.roundStartedAt, BATTLE_TIME_LIMIT_MS - 1000);
+  const time = Math.min(performance.now() - battleState.roundStartedAt, getBattleTimeLimitMs() - 1000);
   battleState.statusMap[player.id] = "완료";
   battleState.submissions.push({
     id: player.id,
@@ -2368,7 +2445,7 @@ function createMockRoundResults() {
       ...player,
       rankLabel: "초과",
       points: 5,
-      timeLabel: formatTime(BATTLE_TIME_LIMIT_MS),
+      timeLabel: formatTime(getBattleTimeLimitMs()),
       expression: "",
       timedOut: true,
     }));
@@ -2429,6 +2506,7 @@ function startRound() {
   clearRoll();
   const problem = createSolvableProblem();
   applyProblemToGame(problem, "solo");
+  game.timeLimit = selectedSoloTimeLimit;
   gameTimer.textContent = "00.00";
   setFeedback("카운트다운 후 숫자가 공개됩니다.");
   renderGame();
@@ -3256,8 +3334,21 @@ function stopTimer() {
 
 function updateTimer() {
   if (!game.startedAt) return;
-  game.elapsed = performance.now() - game.startedAt;
+  const elapsed = performance.now() - game.startedAt;
+  const limit = game.mode === "solo" ? normalizeTimeLimit(game.timeLimit) : elapsed;
+  game.elapsed = game.mode === "solo" ? Math.min(elapsed, limit) : elapsed;
   gameTimer.textContent = formatTime(game.elapsed);
+  if (game.mode === "solo" && elapsed >= limit) {
+    handleSoloTimeout();
+  }
+}
+
+function handleSoloTimeout() {
+  if (game.isSolved) return;
+  game.isSolved = true;
+  stopTimer();
+  setFeedback("시간초과! 제한시간을 다시 선택하거나 다음 문제에 도전해 보세요.", "error");
+  renderGame();
 }
 
 function formatTime(ms) {
