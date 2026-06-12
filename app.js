@@ -102,6 +102,7 @@ const answerCheckButton = document.querySelector("#answerCheckButton");
 const clearExpressionButton = document.querySelector("#clearExpressionButton");
 const undoButton = document.querySelector("#undoButton");
 const successResult = document.querySelector("#successResult");
+const resultKicker = document.querySelector("#resultKicker");
 const resultTime = document.querySelector("#resultTime");
 const resultClearCount = document.querySelector("#resultClearCount");
 const resultNextReward = document.querySelector("#resultNextReward");
@@ -135,7 +136,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260612-time-select1";
+const APP_BUILD = "20260612-solo-timeout1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const DEFAULT_TIME_LIMIT_MS = 120000;
 const SHORT_TIME_LIMIT_MS = 60000;
@@ -3349,6 +3350,7 @@ function handleSoloTimeout() {
   stopTimer();
   setFeedback("시간초과! 제한시간을 다시 선택하거나 다음 문제에 도전해 보세요.", "error");
   renderGame();
+  openTimeoutResult(game.elapsed);
 }
 
 function formatTime(ms) {
@@ -3403,6 +3405,7 @@ function handleCorrectAnswer(time) {
 }
 
 function openSuccessResult(time) {
+  if (resultKicker) resultKicker.textContent = "정답!";
   const rewardStatus = getNextRewardStatus();
 
   resultTime.textContent = `${formatTime(time)}초`;
@@ -3410,6 +3413,18 @@ function openSuccessResult(time) {
   resultNextReward.textContent = `${progress.clears} / ${rewardStatus.nextGoal}`;
   resultMessage.textContent = rewardStatus.resultMessage;
   updateSuccessRewardButton();
+  successResult.hidden = false;
+}
+
+function openTimeoutResult(time) {
+  const rewardStatus = getNextRewardStatus();
+
+  if (resultKicker) resultKicker.textContent = "시간초과 입니다.";
+  resultTime.textContent = `${formatTime(time)}초`;
+  resultClearCount.textContent = `${progress.clears}개`;
+  resultNextReward.textContent = `${progress.clears} / ${rewardStatus.nextGoal}`;
+  resultMessage.textContent = "다음 문제에 다시 도전해 보세요.";
+  resultRewardButton.hidden = true;
   successResult.hidden = false;
 }
 
