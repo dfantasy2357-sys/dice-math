@@ -144,7 +144,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260615-speedrun-timer1";
+const APP_BUILD = "20260617-speedrun-ui1";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const DEFAULT_TIME_LIMIT_MS = 120000;
 const SHORT_TIME_LIMIT_MS = 60000;
@@ -254,6 +254,7 @@ const battleState = {
   roundStartedAt: null,
   firebaseSolveStartedAt: null,
   roundTimerId: null,
+  roundClockMode: null,
   roundEndTimerId: null,
   countdownTimerId: null,
   autoStartTimerId: null,
@@ -1793,6 +1794,7 @@ function startFirebaseRoundClock(room) {
 
   if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
   if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
+  battleState.roundClockMode = "battle";
 
   const updateClock = () => {
     const elapsed = getFirebaseRoundElapsedMs();
@@ -1811,6 +1813,10 @@ function startFirebaseRoundClock(room) {
 
 function syncFirebaseRoundClock() {
   if (battleState.phase !== "playing" || !battleState.firebaseRoomCode || !battleState.firebaseSolveStartedAt) return;
+  if (isSpeedrunMode() || battleState.roundClockMode === "speedrun") {
+    updateSpeedrunClockDisplay();
+    return;
+  }
   const elapsed = getFirebaseRoundElapsedMs();
   const limit = getBattleTimeLimitMs();
   updateBattleElapsed(elapsed);
@@ -1940,7 +1946,12 @@ function beginSpeedrunRevealCountdown(room, currentPlayer) {
 }
 
 function startSpeedrunClock(room) {
-  if (battleState.roundTimerId) return;
+  if (battleState.roundTimerId && battleState.roundClockMode === "speedrun") return;
+  if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
+  if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
+  battleState.roundTimerId = null;
+  battleState.roundEndTimerId = null;
+  battleState.roundClockMode = "speedrun";
 
   const updateClock = () => {
     const elapsed = getSpeedrunElapsedMs();
@@ -2752,6 +2763,7 @@ function clearBattleTimers() {
   clearAutoStartTimers();
   battleState.statusTimerIds.forEach((timerId) => clearTimeout(timerId));
   battleState.roundTimerId = null;
+  battleState.roundClockMode = null;
   battleState.roundEndTimerId = null;
   battleState.countdownTimerId = null;
   battleState.statusTimerIds = [];
@@ -4042,6 +4054,10 @@ function formatDurationClock(ms) {
 }
 
 function updateBattleElapsed(time) {
+  if (battleState.firebaseRoomCode && (isSpeedrunMode() || battleState.roundClockMode === "speedrun")) {
+    updateSpeedrunClockDisplay();
+    return;
+  }
   battleElapsed.textContent = battleState.firebaseRoomCode
     ? formatBattleClock(time)
     : formatTime(time);
