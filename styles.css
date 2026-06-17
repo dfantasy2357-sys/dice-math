@@ -1036,6 +1036,10 @@ button,
   box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.08), 0 8px 18px rgba(23, 32, 51, 0.08);
 }
 
+.online-menu .large-room-button {
+  grid-column: 1 / -1;
+}
+
 .online-menu strong {
   font-size: 17px;
   font-weight: 950;
@@ -1066,6 +1070,21 @@ button,
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
+}
+
+.speedrun-time-options {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.speedrun-setting-group {
+  display: grid;
+  gap: 8px;
+}
+
+.speedrun-setting-group > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .battle-goal-options button {
@@ -1240,7 +1259,7 @@ button,
 }
 
 .battle-time-row span {
-  min-width: 78px;
+  min-width: 86px;
   height: 32px;
   border-radius: 8px;
   display: grid;
@@ -1321,6 +1340,7 @@ button,
 }
 
 .battle-problem-card {
+  position: relative;
   padding: 10px;
   border-radius: 8px;
   display: grid;
@@ -1328,11 +1348,35 @@ button,
   background: rgba(255, 255, 255, 0.1);
 }
 
+.battle-problem-card .pass-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 74px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #e88973;
+  color: #37120b;
+  font-size: 14px;
+  font-weight: 950;
+  box-shadow: inset 0 0 0 1px rgba(90, 24, 16, 0.18), 0 5px 12px rgba(59, 18, 11, 0.16);
+}
+
+.battle-problem-card .pass-button[hidden] {
+  display: none;
+}
+
+.battle-problem-card .pass-button:disabled {
+  opacity: 0.48;
+}
+
 .battle-target-dice {
   display: flex;
   align-items: center;
   justify-content: center;
   max-width: 100%;
+  padding-right: 82px;
 }
 
 .battle-target-dice {

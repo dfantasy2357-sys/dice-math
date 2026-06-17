@@ -21,6 +21,11 @@
     return Number(value) === 60000 ? 60000 : onlineTimeLimitMs;
   }
 
+  function normalizeSpeedrunTimeLimit(value) {
+    const limit = Number(value || 300000);
+    return limit >= 300000 && limit <= 1800000 && limit % 300000 === 0 ? limit : 300000;
+  }
+
   function normalizeSoloTimeLimit(value) {
     return Number(value) === 0 ? 0 : normalizeTimeLimit(value);
   }
@@ -349,6 +354,72 @@
 
       throw Object.assign(new Error("중복되지 않는 방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
     },
+    async createSpeedrunRoom({
+      nickname,
+      difficulty = "basic",
+      timeLimit = 300000,
+      problemTimeLimit = 60000,
+      playerLimit = 10,
+      targetSolves = 20,
+    }) {
+      requireDatabase(this);
+
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      await this.leaveExistingRooms();
+
+      for (let attempt = 0; attempt < 14; attempt += 1) {
+        const code = createRoomCode();
+        const roomRef = this.database.ref(`rooms/${code}`);
+        const roomPayload = {
+          code,
+          mode: "스피드런 대회방",
+          speedrun: true,
+          playerCount: Math.min(10, Math.max(2, Number(playerLimit || 10))),
+          matchmaking: false,
+          difficulty: difficulty === "power" ? "power" : "basic",
+          targetScore: 200,
+          targetSolves: Math.min(20, Math.max(1, Number(targetSolves || 20))),
+          timeLimit: normalizeSpeedrunTimeLimit(timeLimit),
+          problemTimeLimit: normalizeTimeLimit(problemTimeLimit),
+          phase: "lobby",
+          round: 0,
+          hostUid: uid,
+          autoStartPaused: false,
+          createdAt: now,
+          updatedAt: now,
+          players: {
+            [uid]: {
+              name: cleanNickname(nickname),
+              score: 0,
+              solvedCount: 0,
+              passedCount: 0,
+              currentIndex: 0,
+              finishTime: 0,
+              finished: false,
+              status: "준비 전",
+              ready: false,
+              isHost: true,
+              online: true,
+              activeRound: 0,
+              waitingNextRound: false,
+              joinedAt: now,
+            },
+          },
+        };
+
+        const result = await roomRef.transaction((currentRoom) => (
+          currentRoom === null ? roomPayload : undefined
+        ));
+
+        if (result.committed) {
+          await this.database.ref(`userRooms/${uid}/${code}`).set({ role: "host", joinedAt: now });
+          return { code, room: result.snapshot.val() };
+        }
+      }
+
+      throw Object.assign(new Error("스피드런 대회방 코드를 만들지 못했습니다."), { code: "room-code-collision" });
+    },
     async findOrCreateMatch({ playerCount, nickname, difficulty = "basic", targetScore = 200 }) {
       requireDatabase(this);
 
@@ -462,6 +533,9 @@
 
       const room = snapshot.val();
       const uid = this.getUid();
+      if (room.speedrun === true && room.phase !== "lobby" && !room.players?.[uid]) {
+        throw Object.assign(new Error("이미 시작된 스피드런 대회방입니다."), { code: "speedrun-started" });
+      }
       if (!skipLeaveExistingRooms) {
         await this.leaveExistingRooms({ exceptCode: normalizedCode });
       }
@@ -474,10 +548,15 @@
       }
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
-      const isWaitingForNextRound = room.phase === "playing" || room.phase === "result";
+      const isWaitingForNextRound = room.speedrun === true ? false : (room.phase === "playing" || room.phase === "result");
       await roomRef.child(`players/${uid}`).update({
         name: cleanNickname(nickname),
         score: players[uid]?.score || 0,
+        solvedCount: players[uid]?.solvedCount || 0,
+        passedCount: players[uid]?.passedCount || 0,
+        currentIndex: players[uid]?.currentIndex || 0,
+        finishTime: players[uid]?.finishTime || 0,
+        finished: players[uid]?.finished || false,
         status: isWaitingForNextRound ? "다음 라운드 대기" : "준비 전",
         ready: false,
         isHost: room.hostUid === uid,
@@ -573,6 +652,63 @@
         updatedAt: now,
       });
     },
+    async startSpeedrun(code, { problemSet, timeLimit = 300000, targetSolves = 20 }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+
+      if (!snapshot.exists()) {
+        throw Object.assign(new Error("방을 찾을 수 없습니다."), { code: "room-not-found" });
+      }
+
+      const room = snapshot.val();
+      const players = room.players || {};
+      const currentPlayer = players[uid] || {};
+      const isHost = room.hostUid === uid || currentPlayer.isHost === true;
+      const playerEntries = Object.entries(players);
+      const allReady = playerEntries.length >= 2 && playerEntries.every(([, player]) => (
+        player.ready === true || player.status === "준비 완료"
+      ));
+
+      if (!isHost) {
+        throw Object.assign(new Error("방장만 시작할 수 있습니다."), { code: "not-host" });
+      }
+      if (!allReady) {
+        throw Object.assign(new Error("아직 준비하지 않은 참가자가 있습니다."), { code: "not-all-ready" });
+      }
+
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const updates = {
+        phase: "playing",
+        round: Number(room.round || 0) + 1,
+        startedAt: now,
+        timeLimit: normalizeSpeedrunTimeLimit(timeLimit),
+        targetSolves: Math.min(20, Math.max(1, Number(targetSolves || 20))),
+        problemSet: Array.isArray(problemSet) ? problemSet : [],
+        progress: null,
+        finalResults: null,
+        updatedAt: now,
+      };
+
+      playerEntries.forEach(([playerUid]) => {
+        updates[`players/${playerUid}/status`] = "도전 중";
+        updates[`players/${playerUid}/ready`] = false;
+        updates[`players/${playerUid}/readyAt`] = null;
+        updates[`players/${playerUid}/solvedCount`] = 0;
+        updates[`players/${playerUid}/passedCount`] = 0;
+        updates[`players/${playerUid}/currentIndex`] = 0;
+        updates[`players/${playerUid}/finishTime`] = 0;
+        updates[`players/${playerUid}/finished`] = false;
+        updates[`players/${playerUid}/problemStartedAt`] = now;
+        updates[`players/${playerUid}/activeRound`] = Number(room.round || 0) + 1;
+        updates[`players/${playerUid}/waitingNextRound`] = false;
+      });
+
+      await roomRef.update(updates);
+    },
     async submitAnswer(code, { expression, time }) {
       requireDatabase(this);
 
@@ -605,6 +741,86 @@
         [`submissions/${uid}/time`]: timeLimit,
         [`submissions/${uid}/timedOut`]: true,
         [`submissions/${uid}/submittedAt`]: now,
+        updatedAt: now,
+      });
+    },
+    async submitSpeedrunSolve(code, { problemIndex, expression, elapsed }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+      const room = snapshot.val();
+      if (!room || room.phase !== "playing" || room.speedrun !== true) return;
+
+      const player = room.players?.[uid] || {};
+      if (player.finished) return;
+
+      const normalizedIndex = Math.max(0, Number(problemIndex || player.currentIndex || 0));
+      if (normalizedIndex !== Number(player.currentIndex || 0)) return;
+
+      const targetSolves = Math.min(20, Math.max(1, Number(room.targetSolves || 20)));
+      const solvedCount = Number(player.solvedCount || 0) + 1;
+      const finishTime = solvedCount >= targetSolves ? Math.max(0, Math.round(Number(elapsed || 0))) : 0;
+      const updates = {
+        [`players/${uid}/solvedCount`]: solvedCount,
+        [`players/${uid}/currentIndex`]: normalizedIndex + 1,
+        [`players/${uid}/problemStartedAt`]: finishTime ? player.problemStartedAt || now : now,
+        [`players/${uid}/lastSolvedAt`]: Math.max(0, Math.round(Number(elapsed || 0))),
+        [`players/${uid}/status`]: finishTime ? "완주" : "도전 중",
+        [`players/${uid}/finished`]: Boolean(finishTime),
+        [`players/${uid}/finishTime`]: finishTime,
+        [`progress/${uid}/${normalizedIndex}/type`]: "solve",
+        [`progress/${uid}/${normalizedIndex}/expression`]: String(expression || ""),
+        [`progress/${uid}/${normalizedIndex}/elapsed`]: Math.max(0, Math.round(Number(elapsed || 0))),
+        [`progress/${uid}/${normalizedIndex}/updatedAt`]: now,
+        updatedAt: now,
+      };
+
+      await roomRef.update(updates);
+    },
+    async submitSpeedrunPass(code, { problemIndex, elapsed }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+      const room = snapshot.val();
+      if (!room || room.phase !== "playing" || room.speedrun !== true) return;
+
+      const player = room.players?.[uid] || {};
+      if (player.finished) return;
+
+      const normalizedIndex = Math.max(0, Number(problemIndex || player.currentIndex || 0));
+      if (normalizedIndex !== Number(player.currentIndex || 0)) return;
+
+      const updates = {
+        [`players/${uid}/passedCount`]: Number(player.passedCount || 0) + 1,
+        [`players/${uid}/currentIndex`]: normalizedIndex + 1,
+        [`players/${uid}/problemStartedAt`]: now,
+        [`players/${uid}/status`]: "도전 중",
+        [`progress/${uid}/${normalizedIndex}/type`]: "pass",
+        [`progress/${uid}/${normalizedIndex}/elapsed`]: Math.max(0, Math.round(Number(elapsed || 0))),
+        [`progress/${uid}/${normalizedIndex}/updatedAt`]: now,
+        updatedAt: now,
+      };
+
+      await roomRef.update(updates);
+    },
+    async submitSpeedrunTimeout(code, { elapsed }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const now = window.firebase.database.ServerValue.TIMESTAMP;
+      await this.database.ref(`rooms/${normalizedCode}`).update({
+        [`players/${uid}/status`]: "시간 종료",
+        [`players/${uid}/finishTime`]: Math.max(0, Math.round(Number(elapsed || 0))),
+        [`players/${uid}/timeoutAt`]: now,
         updatedAt: now,
       });
     },
@@ -697,6 +913,55 @@
         };
       });
     },
+    async finishSpeedrunRoom(code) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const now = Date.now();
+
+      await roomRef.transaction((room) => {
+        if (!room || room.speedrun !== true || room.phase !== "playing") return room;
+        const players = room.players || {};
+        const currentPlayer = players[uid] || {};
+        const isHost = room.hostUid === uid || currentPlayer.isHost === true;
+        if (!isHost) return room;
+
+        const targetSolves = Math.min(20, Math.max(1, Number(room.targetSolves || 20)));
+        const finalResults = Object.entries(players)
+          .map(([playerUid, player]) => {
+            const solvedCount = Number(player.solvedCount || 0);
+            return {
+              id: playerUid,
+              name: String(player.name || "이름 없음"),
+              solvedCount,
+              passedCount: Number(player.passedCount || 0),
+              finishTime: Number(player.finishTime || 0),
+              finished: solvedCount >= targetSolves,
+            };
+          })
+          .sort((a, b) => {
+            if (a.finished !== b.finished) return a.finished ? -1 : 1;
+            if (a.finished && b.finished) return a.finishTime - b.finishTime;
+            if (a.solvedCount !== b.solvedCount) return b.solvedCount - a.solvedCount;
+            if (a.passedCount !== b.passedCount) return a.passedCount - b.passedCount;
+            return a.name.localeCompare(b.name, "ko");
+          })
+          .map((player, index) => ({
+            ...player,
+            rankLabel: String(index + 1),
+          }));
+
+        return {
+          ...room,
+          phase: "final",
+          finalResults,
+          finalAt: now,
+          updatedAt: now,
+        };
+      });
+    },
     async startNextRound(code, problem) {
       requireDatabase(this);
 
@@ -769,7 +1034,7 @@
       delete remainingPlayers[uid];
       const remainingPlayerIds = Object.keys(remainingPlayers);
       const roomPhase = room.phase || "lobby";
-      const roomPlayerCount = Math.min(4, Math.max(2, Number(room.playerCount || 2)));
+      const roomPlayerCount = Math.min(10, Math.max(2, Number(room.playerCount || 2)));
       const roomTargetScore = Math.min(500, Math.max(100, Number(room.targetScore || 200)));
       const roomDifficulty = room.difficulty === "power" ? "power" : "basic";
       const queuePath = isAutoMatch ? `matchQueues/${roomPlayerCount}/${roomTargetScore}/${roomDifficulty}` : "";

@@ -2,7 +2,7 @@
   "name": "주사위 연산",
   "short_name": "주사위 연산",
   "description": "주사위를 이용해 암산 식을 만드는 학습 게임",
-  "start_url": "./index.html?t=20260612-solo-unlimited1",
+  "start_url": "./index.html?t=20260615-speedrun-timer1",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121723",
