@@ -43,11 +43,15 @@ const speedrunCreateSheet = document.querySelector("#speedrunCreateSheet");
 const speedrunCreateBackdrop = document.querySelector("#speedrunCreateBackdrop");
 const speedrunCreateClose = document.querySelector("#speedrunCreateClose");
 const speedrunCreateSubmit = document.querySelector("#speedrunCreateSubmit");
+const speedrunCreateHelp = document.querySelector("#speedrunCreateHelp");
+const speedrunTotalTimeGroup = document.querySelector("#speedrunTotalTimeGroup");
 const matchSizeButtons = document.querySelectorAll("[data-match-size]");
 const battleGoalButtons = document.querySelectorAll("[data-score-goal]");
 const roomTimeLimitButtons = document.querySelectorAll("[data-room-time-limit]");
+const speedrunTypeButtons = document.querySelectorAll("[data-speedrun-type]");
 const speedrunTimeLimitButtons = document.querySelectorAll("[data-speedrun-time-limit]");
 const speedrunProblemTimeLimitButtons = document.querySelectorAll("[data-speedrun-problem-time-limit]");
+const speedrunQuestionCountButtons = document.querySelectorAll("[data-speedrun-question-count]");
 const roomCodeLabel = document.querySelector("#roomCodeLabel");
 const lobbyModeLabel = document.querySelector("#lobbyModeLabel");
 const playerList = document.querySelector("#playerList");
@@ -80,6 +84,8 @@ const battleExpressionPreview = document.querySelector("#battleExpressionPreview
 const battleFeedback = document.querySelector("#battleFeedback");
 const battleCountdownLayer = document.querySelector("#battleCountdownLayer");
 const battleCountdownNumber = document.querySelector("#battleCountdownNumber");
+const competitionNotice = document.querySelector("#competitionNotice");
+const competitionNoticeName = document.querySelector("#competitionNoticeName");
 const battlePowerOp = document.querySelector("#battlePowerOp");
 const battleAnswerCheckButton = document.querySelector("#battleAnswerCheckButton");
 const battleClearExpressionButton = document.querySelector("#battleClearExpressionButton");
@@ -144,7 +150,7 @@ const rollLayer = document.querySelector("#rollLayer");
 const rollStage = document.querySelector("#rollStage");
 const operatorButtons = document.querySelectorAll("[data-op]");
 
-const APP_BUILD = "20260617-speedrun-ui1";
+const APP_BUILD = "20260622-speedrun-competition2";
 const BATTLE_TIME_LIMIT_MS = 120000;
 const DEFAULT_TIME_LIMIT_MS = 120000;
 const SHORT_TIME_LIMIT_MS = 60000;
@@ -156,8 +162,11 @@ const MAX_BATTLE_TARGET_SCORE = 500;
 const SPEEDRUN_MODE_NAME = "스피드런 대회방";
 const SPEEDRUN_PLAYER_LIMIT = 10;
 const SPEEDRUN_MIN_START_PLAYERS = 2;
-const SPEEDRUN_TARGET_SOLVES = 20;
-const SPEEDRUN_PROBLEM_COUNT = 80;
+const DEFAULT_SPEEDRUN_QUESTION_COUNT = 5;
+const MAX_SPEEDRUN_QUESTION_COUNT = 10;
+const SPEEDRUN_PROBLEM_COUNT = 40;
+const SPEEDRUN_TYPE_INDIVIDUAL = "individual";
+const SPEEDRUN_TYPE_COMPETITIVE = "competitive";
 const DEFAULT_SPEEDRUN_TIME_LIMIT_MS = 5 * 60 * 1000;
 const MAX_SPEEDRUN_TIME_LIMIT_MS = 30 * 60 * 1000;
 const DEFAULT_NICKNAME = "나의 닉네임";
@@ -231,8 +240,10 @@ let selectedSkin = localStorage.getItem("diceMath.skin") || "basic";
 let selectedBattleTargetScore = normalizeBattleTargetScore(localStorage.getItem("diceMath.battleTargetScore") || DEFAULT_BATTLE_TARGET_SCORE);
 let selectedSoloTimeLimit = normalizeSoloTimeLimit(localStorage.getItem("diceMath.soloTimeLimit") || DEFAULT_TIME_LIMIT_MS);
 let selectedRoomTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.roomTimeLimit") || DEFAULT_TIME_LIMIT_MS);
+let selectedSpeedrunType = normalizeSpeedrunType(localStorage.getItem("diceMath.speedrunType"));
 let selectedSpeedrunTimeLimit = normalizeSpeedrunTimeLimit(localStorage.getItem("diceMath.speedrunTimeLimit") || DEFAULT_SPEEDRUN_TIME_LIMIT_MS);
 let selectedSpeedrunProblemTimeLimit = normalizeTimeLimit(localStorage.getItem("diceMath.speedrunProblemTimeLimit") || SHORT_TIME_LIMIT_MS);
+let selectedSpeedrunQuestionCount = normalizeSpeedrunQuestionCount(localStorage.getItem("diceMath.speedrunQuestionCount"));
 let soundEnabled = localStorage.getItem("diceMath.soundEnabled") !== "false";
 let firebaseUserProfile = null;
 let firebaseProfileReady = false;
@@ -275,6 +286,11 @@ const battleState = {
   speedrunStartKey: null,
   speedrunFinishKey: null,
   speedrunProblemTimeoutKey: null,
+  competitiveResolveKey: null,
+  competitiveAdvanceKey: null,
+  competitiveNoticeKey: null,
+  competitiveAdvanceTimerId: null,
+  activeSoloCloseKey: null,
 };
 const firebaseState = {
   ready: false,
@@ -294,8 +310,10 @@ renderOnlineDifficulty();
 renderBattleGoalOptions();
 renderSoloTimeLimitOptions();
 renderRoomTimeLimitOptions();
+renderSpeedrunTypeOptions();
 renderSpeedrunTimeLimitOptions();
 renderSpeedrunProblemTimeLimitOptions();
+renderSpeedrunQuestionCountOptions();
 applySkin(selectedSkin, { closeSheet: false });
 renderGame();
 
@@ -392,6 +410,13 @@ roomTimeLimitButtons.forEach((button) => {
     scheduleUserProfileSave();
   });
 });
+speedrunTypeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedSpeedrunType = normalizeSpeedrunType(button.dataset.speedrunType);
+    localStorage.setItem("diceMath.speedrunType", selectedSpeedrunType);
+    renderSpeedrunTypeOptions();
+  });
+});
 speedrunTimeLimitButtons.forEach((button) => {
   button.addEventListener("click", () => {
     selectedSpeedrunTimeLimit = normalizeSpeedrunTimeLimit(button.dataset.speedrunTimeLimit);
@@ -404,6 +429,13 @@ speedrunProblemTimeLimitButtons.forEach((button) => {
     selectedSpeedrunProblemTimeLimit = normalizeTimeLimit(button.dataset.speedrunProblemTimeLimit);
     localStorage.setItem("diceMath.speedrunProblemTimeLimit", String(selectedSpeedrunProblemTimeLimit));
     renderSpeedrunProblemTimeLimitOptions();
+  });
+});
+speedrunQuestionCountButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectedSpeedrunQuestionCount = normalizeSpeedrunQuestionCount(button.dataset.speedrunQuestionCount);
+    localStorage.setItem("diceMath.speedrunQuestionCount", String(selectedSpeedrunQuestionCount));
+    renderSpeedrunQuestionCountOptions();
   });
 });
 onlineReadyButton.addEventListener("click", handleOnlineReadyClick);
@@ -950,6 +982,16 @@ function normalizeSpeedrunTimeLimit(value) {
   return DEFAULT_SPEEDRUN_TIME_LIMIT_MS;
 }
 
+function normalizeSpeedrunType(value) {
+  return value === SPEEDRUN_TYPE_COMPETITIVE ? SPEEDRUN_TYPE_COMPETITIVE : SPEEDRUN_TYPE_INDIVIDUAL;
+}
+
+function normalizeSpeedrunQuestionCount(value) {
+  return Number(value) === MAX_SPEEDRUN_QUESTION_COUNT
+    ? MAX_SPEEDRUN_QUESTION_COUNT
+    : DEFAULT_SPEEDRUN_QUESTION_COUNT;
+}
+
 function renderBattleGoalOptions() {
   battleGoalButtons.forEach((button) => {
     button.classList.toggle("active", Number(button.dataset.scoreGoal) === selectedBattleTargetScore);
@@ -974,9 +1016,28 @@ function renderSpeedrunTimeLimitOptions() {
   });
 }
 
+function renderSpeedrunTypeOptions() {
+  speedrunTypeButtons.forEach((button) => {
+    button.classList.toggle("active", normalizeSpeedrunType(button.dataset.speedrunType) === selectedSpeedrunType);
+  });
+  const isCompetitive = selectedSpeedrunType === SPEEDRUN_TYPE_COMPETITIVE;
+  if (speedrunTotalTimeGroup) speedrunTotalTimeGroup.hidden = isCompetitive;
+  if (speedrunCreateHelp) {
+    speedrunCreateHelp.textContent = isCompetitive
+      ? "모두 같은 문제를 풀며 최초 정답자만 1점을 얻습니다. 전원이 패스하면 다음 문제로 넘어갑니다."
+      : "각자 문제를 풀고 정해진 문항을 먼저 완료하면 완주입니다.";
+  }
+}
+
 function renderSpeedrunProblemTimeLimitOptions() {
   speedrunProblemTimeLimitButtons.forEach((button) => {
     button.classList.toggle("active", normalizeTimeLimit(button.dataset.speedrunProblemTimeLimit) === selectedSpeedrunProblemTimeLimit);
+  });
+}
+
+function renderSpeedrunQuestionCountOptions() {
+  speedrunQuestionCountButtons.forEach((button) => {
+    button.classList.toggle("active", normalizeSpeedrunQuestionCount(button.dataset.speedrunQuestionCount) === selectedSpeedrunQuestionCount);
   });
 }
 
@@ -1004,8 +1065,10 @@ function closeJoinCodeSheet() {
 
 function openSpeedrunCreateSheet() {
   if (blockInvalidNicknameEntry()) return;
+  renderSpeedrunTypeOptions();
   renderSpeedrunTimeLimitOptions();
   renderSpeedrunProblemTimeLimitOptions();
+  renderSpeedrunQuestionCountOptions();
   speedrunCreateSheet.hidden = false;
 }
 
@@ -1091,10 +1154,11 @@ async function createSpeedrunRoom(sourceButton) {
     const result = await window.diceFirebase.createSpeedrunRoom({
       nickname: getOnlineNickname(),
       difficulty: selectedOnlineDifficulty,
+      speedrunType: selectedSpeedrunType,
       timeLimit: selectedSpeedrunTimeLimit,
       problemTimeLimit: selectedSpeedrunProblemTimeLimit,
       playerLimit: SPEEDRUN_PLAYER_LIMIT,
-      targetSolves: SPEEDRUN_TARGET_SOLVES,
+      questionCount: selectedSpeedrunQuestionCount,
     });
     closeSpeedrunCreateSheet();
     openBattleLobby(SPEEDRUN_MODE_NAME, SPEEDRUN_PLAYER_LIMIT, result.code, {
@@ -1309,13 +1373,15 @@ function openBattleLobby(mode, playerCount = 4, roomCode = createRoomCode(), opt
   battleState.firebaseResultRound = null;
   battleState.firebaseAutoStartKey = null;
   battleState.firebaseTimeoutKey = null;
+  battleState.competitiveResolveKey = null;
+  battleState.competitiveAdvanceKey = null;
+  battleState.competitiveNoticeKey = null;
+  battleState.competitiveAdvanceTimerId = null;
+  battleState.activeSoloCloseKey = null;
   battleState.speedrunProblemIndex = 0;
   battleState.speedrunStartKey = null;
   battleState.speedrunFinishKey = null;
   battlePassButton.hidden = true;
-  battleState.speedrunProblemIndex = 0;
-  battleState.speedrunStartKey = null;
-  battleState.speedrunFinishKey = null;
   roomCodeLabel.textContent = roomCode;
   updateBattleRoomCode(roomCode);
   lobbyModeLabel.textContent = progress.clears >= progress.onlineGoal ? mode : `${mode} 미리보기`;
@@ -1472,6 +1538,8 @@ function applyFirebaseRoomSnapshot(room) {
         finished: Boolean(player.finished),
         finishTime: Number(player.finishTime || 0),
         problemStartedAt: Number(player.problemStartedAt || 0),
+        passedRound: Number(player.passedRound ?? -1),
+        lastSolvedAt: Number(player.lastSolvedAt || 0),
         joinedAt: Number.isFinite(joinedAt) ? joinedAt : 0,
       };
     })
@@ -1509,6 +1577,7 @@ function applyFirebaseRoomSnapshot(room) {
   updateRoomActionState();
   updateHostControlButton();
   scheduleSoloLobbyWaitTimer(room);
+  maybeCloseSoloActiveRoom(room);
 
   if (isSpeedrunMode(room.mode)) {
     handleSpeedrunRoomUpdate(room, currentPlayer);
@@ -1538,6 +1607,35 @@ function applyFirebaseRoomSnapshot(room) {
   }
 }
 
+function maybeCloseSoloActiveRoom(room) {
+  const roomCode = String(room?.code || battleState.firebaseRoomCode || "").toUpperCase();
+  const playerTotal = Object.keys(room?.players || {}).length;
+  const phase = room?.phase || "lobby";
+  const shouldClose = Boolean(
+    roomCode
+    && battleState.isHost
+    && playerTotal <= 1
+    && (phase === "playing" || phase === "result")
+  );
+
+  if (!shouldClose) {
+    if (battleState.activeSoloCloseKey?.startsWith(`${roomCode}:`)) {
+      battleState.activeSoloCloseKey = null;
+    }
+    return;
+  }
+
+  const closeKey = `${roomCode}:${phase}:${room?.round || 0}:${playerTotal}`;
+  if (battleState.activeSoloCloseKey === closeKey) return;
+  battleState.activeSoloCloseKey = closeKey;
+  battleRuleNote.textContent = "참가자가 나가서 방이 종료되었습니다.";
+
+  window.setTimeout(async () => {
+    if (battleState.activeSoloCloseKey !== closeKey) return;
+    await leaveCurrentRoom();
+  }, 0);
+}
+
 function applyOnlineDifficulty(difficulty) {
   const nextDifficulty = difficulty === "power" ? "power" : "basic";
   if (selectedDifficulty === nextDifficulty) return;
@@ -1561,7 +1659,7 @@ function renderLobbyPlayers() {
       badge.textContent = isMe ? "나" : String(index + 1);
       name.textContent = player.isHost && !isAutoMatchRoom() ? `${player.name} 방장` : player.name;
       score.textContent = isSpeedrunMode()
-        ? `${Number(player.solvedCount || 0)}/${SPEEDRUN_TARGET_SOLVES}`
+        ? `${Number(player.solvedCount || 0)}/${getSpeedrunQuestionCount()}`
         : `${Number(player.score || 0)}점`;
       status.textContent = isSpeedrunMode() && player.passedCount
         ? `${player.status || "진행 중"} · 패스 ${player.passedCount}`
@@ -1721,11 +1819,15 @@ async function startSpeedrunSignal() {
   onlineReadyButton.textContent = "대회 시작 중...";
 
   try {
-    const problemSet = createSpeedrunProblemSet();
+    const room = battleState.firebaseRoomSnapshot || {};
+    const questionCount = getSpeedrunQuestionCount(room);
+    const speedrunType = normalizeSpeedrunType(room.speedrunType || selectedSpeedrunType);
+    const problemSet = createSpeedrunProblemSet(questionCount);
     await window.diceFirebase.startSpeedrun(battleState.firebaseRoomCode, {
       problemSet,
+      speedrunType,
       timeLimit: battleState.timeLimit || selectedSpeedrunTimeLimit,
-      targetSolves: SPEEDRUN_TARGET_SOLVES,
+      questionCount,
     });
   } catch (error) {
     console.warn("Firebase 스피드런 시작 실패:", error);
@@ -1783,8 +1885,10 @@ function getTimeLimitSeconds(limit = getBattleTimeLimitMs()) {
 
 function renderBattleTimeLimit() {
   if (battleTimeLimitLabel) {
-    battleTimeLimitLabel.textContent = isSpeedrunMode()
-      ? `총 남은 ${formatDurationClock(battleState.timeLimit || selectedSpeedrunTimeLimit)}`
+    battleTimeLimitLabel.textContent = isCompetitiveSpeedrun()
+      ? `문제 1/${getSpeedrunQuestionCount()}`
+      : isSpeedrunMode()
+        ? `총 남은 ${formatDurationClock(battleState.timeLimit || selectedSpeedrunTimeLimit)}`
       : `제한시간 ${getTimeLimitSeconds()}초`;
   }
 }
@@ -1841,8 +1945,12 @@ function handleSpeedrunRoomUpdate(room, currentPlayer) {
   }
 
   if (room.phase === "playing") {
-    enterSpeedrunRound(room, currentPlayer);
-    maybeFinishSpeedrun(room);
+    if (isCompetitiveSpeedrun(room)) {
+      enterCompetitiveSpeedrunRound(room, currentPlayer);
+    } else {
+      enterSpeedrunRound(room, currentPlayer);
+      maybeFinishSpeedrun(room);
+    }
     return;
   }
 
@@ -1939,7 +2047,12 @@ function beginSpeedrunRevealCountdown(room, currentPlayer) {
     clearInterval(battleState.countdownTimerId);
     battleState.countdownTimerId = null;
     battleCountdownLayer.hidden = true;
-    renderSpeedrunCurrentProblem(room, currentPlayer);
+    if (isCompetitiveSpeedrun(room)) {
+      renderCompetitiveCurrentProblem(room, currentPlayer);
+      startCompetitiveClock(room);
+    } else {
+      renderSpeedrunCurrentProblem(room, currentPlayer);
+    }
   };
   updateCountdown();
   battleState.countdownTimerId = window.setInterval(updateCountdown, 250);
@@ -1975,7 +2088,7 @@ function startSpeedrunClock(room) {
 function renderSpeedrunCurrentProblem(room, currentPlayer = getCurrentBattlePlayer()) {
   if (!currentPlayer) return;
   const problemSet = getSpeedrunProblemSet(room);
-  const targetSolves = Number(room.targetSolves || SPEEDRUN_TARGET_SOLVES);
+  const targetSolves = getSpeedrunQuestionCount(room);
   const currentIndex = Number(currentPlayer.currentIndex || 0);
   const isDone = currentPlayer.finished || Number(currentPlayer.solvedCount || 0) >= targetSolves;
 
@@ -2016,6 +2129,11 @@ async function handleSpeedrunCorrectAnswer(time, expression) {
   const me = getCurrentBattlePlayer();
   if (!me || !battleState.firebaseRoomCode) return;
 
+  if (isCompetitiveSpeedrun()) {
+    await handleCompetitiveCorrectAnswer(time, expression);
+    return;
+  }
+
   game.isSolved = true;
   setBattleInputEnabled(false);
   battlePassButton.disabled = true;
@@ -2043,6 +2161,11 @@ async function handleSpeedrunPass() {
   const me = getCurrentBattlePlayer();
   if (!me) return;
 
+  if (isCompetitiveSpeedrun()) {
+    await handleCompetitivePass();
+    return;
+  }
+
   game.isSolved = true;
   setBattleInputEnabled(false);
   battlePassButton.disabled = true;
@@ -2064,6 +2187,7 @@ async function handleSpeedrunPass() {
 
 async function maybeAutoPassSpeedrunProblem(room) {
   if (!room || game.mode !== "speedrun" || game.isSolved || !battleState.firebaseRoomCode) return;
+  if (isCompetitiveSpeedrun(room)) return;
   const me = getCurrentBattlePlayer();
   if (!me || me.finished) return;
   const problemLimit = getSpeedrunProblemTimeLimitMs(room);
@@ -2108,8 +2232,9 @@ async function submitSpeedrunTimeoutIfNeeded() {
 
 async function maybeFinishSpeedrun(room) {
   if (!room || !battleState.isHost || room.phase !== "playing" || !window.diceFirebase?.finishSpeedrunRoom) return;
+  if (isCompetitiveSpeedrun(room)) return;
   const elapsed = getSpeedrunElapsedMs();
-  const targetSolves = Number(room.targetSolves || SPEEDRUN_TARGET_SOLVES);
+  const targetSolves = getSpeedrunQuestionCount(room);
   const players = Object.values(room.players || {});
   const allFinished = players.length > 0 && players.every((player) => player.finished || Number(player.solvedCount || 0) >= targetSolves);
   const timeEnded = elapsed >= normalizeSpeedrunTimeLimit(room.timeLimit || battleState.timeLimit);
@@ -2127,8 +2252,258 @@ async function maybeFinishSpeedrun(room) {
   }
 }
 
+function getCompetitiveProblemStartedAt(room) {
+  const currentIndex = Number(room.currentIndex || 0);
+  const rawStartedAt = Number(currentIndex === 0 ? room.startedAt : room.currentProblemStartedAt);
+  if (!Number.isFinite(rawStartedAt) || rawStartedAt <= 0) return getFirebaseNow();
+  return currentIndex === 0 ? rawStartedAt + FIREBASE_REVEAL_DELAY_MS : rawStartedAt;
+}
+
+function getCompetitiveProblemElapsedMs(room = battleState.firebaseRoomSnapshot || {}) {
+  return Math.max(0, getFirebaseNow() - getCompetitiveProblemStartedAt(room));
+}
+
+function enterCompetitiveSpeedrunRound(room, currentPlayer) {
+  clearAutoStartTimers();
+  setOnlinePhase("playing");
+  battleRoundPanel.hidden = false;
+  battleResultSummary.hidden = true;
+  battleResultList.hidden = true;
+  battleResultList.replaceChildren();
+  battleAdSlot.hidden = true;
+  battlePassButton.hidden = false;
+  battleState.timeLimit = normalizeTimeLimit(room.problemTimeLimit || selectedSpeedrunProblemTimeLimit);
+  lobbyModeLabel.textContent = `${battleState.roomMode} · 경쟁`;
+  updateBattleRoomCode(room.code || battleState.firebaseRoomCode);
+  renderBattleStatuses();
+  renderScoreBoard();
+
+  if (room.roundState === "resolved") {
+    showCompetitiveRoundWinner(room);
+    scheduleCompetitiveAdvance(room);
+    return;
+  }
+
+  hideCompetitionNotice();
+  monitorCompetitiveRound(room);
+
+  const solveStartedAt = getCompetitiveProblemStartedAt(room);
+  if (getFirebaseNow() < solveStartedAt) {
+    battleState.firebaseSolveStartedAt = solveStartedAt;
+    beginSpeedrunRevealCountdown(room, currentPlayer);
+    return;
+  }
+
+  renderCompetitiveCurrentProblem(room, currentPlayer);
+  startCompetitiveClock(room);
+}
+
+function renderCompetitiveCurrentProblem(room, currentPlayer = getCurrentBattlePlayer()) {
+  const problemSet = getSpeedrunProblemSet(room);
+  const currentIndex = Number(room.currentIndex || 0);
+  const questionCount = getSpeedrunQuestionCount(room);
+  const problem = problemSet[currentIndex];
+  if (!problem) return;
+  battleState.competitiveNoticeKey = null;
+
+  if (battleState.speedrunProblemIndex !== currentIndex || game.mode !== "speedrun") {
+    battleState.speedrunProblemIndex = currentIndex;
+    battleState.speedrunProblemTimeoutKey = null;
+    applyProblemToGame(problem, "speedrun");
+  }
+
+  game.isRevealed = true;
+  renderGame();
+  const hasPassed = Number(currentPlayer?.passedRound ?? -1) === currentIndex;
+  const claimExists = Boolean(room.competitiveClaim);
+  game.isSolved = hasPassed || claimExists;
+  setBattleInputEnabled(!hasPassed && !claimExists);
+  battlePassButton.disabled = hasPassed || claimExists;
+  onlineReadyButton.disabled = true;
+  onlineReadyButton.textContent = `${currentIndex + 1}/${questionCount} 문제`;
+  setFeedback(
+    hasPassed
+      ? "패스했습니다. 다른 참가자를 기다리는 중입니다."
+      : `공동 문제 ${currentIndex + 1}/${questionCount} · 가장 먼저 맞히면 1점입니다.`,
+    hasPassed ? "" : "success"
+  );
+  updateCompetitiveClockDisplay(room);
+}
+
+function updateCompetitiveClockDisplay(room = battleState.firebaseRoomSnapshot || {}) {
+  const currentIndex = Number(room.currentIndex || 0);
+  const questionCount = getSpeedrunQuestionCount(room);
+  const limit = getSpeedrunProblemTimeLimitMs(room);
+  const remaining = Math.max(0, limit - getCompetitiveProblemElapsedMs(room));
+  if (battleTimeLimitLabel) battleTimeLimitLabel.textContent = `문제 ${Math.min(currentIndex + 1, questionCount)}/${questionCount}`;
+  battleElapsed.textContent = `남은 ${formatDurationClock(remaining)}`;
+}
+
+function startCompetitiveClock(room) {
+  if (battleState.roundTimerId && battleState.roundClockMode === "competitive") {
+    updateCompetitiveClockDisplay(room);
+    return;
+  }
+  if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
+  if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
+  battleState.roundClockMode = "competitive";
+
+  const updateClock = () => {
+    const snapshot = battleState.firebaseRoomSnapshot || room;
+    if (!isCompetitiveSpeedrun(snapshot) || snapshot.phase !== "playing") return;
+    updateCompetitiveClockDisplay(snapshot);
+    monitorCompetitiveRound(snapshot);
+  };
+
+  updateClock();
+  battleState.roundTimerId = window.setInterval(updateClock, 250);
+}
+
+function monitorCompetitiveRound(room) {
+  if (!battleState.isHost || room.roundState !== "active") return;
+  const currentIndex = Number(room.currentIndex || 0);
+
+  if (room.competitiveClaim?.uid) {
+    const resolveKey = `${battleState.firebaseRoomCode}:${currentIndex}:${room.competitiveClaim.uid}`;
+    if (battleState.competitiveResolveKey === resolveKey) return;
+    battleState.competitiveResolveKey = resolveKey;
+    window.diceFirebase.resolveCompetitiveClaim(battleState.firebaseRoomCode, currentIndex)
+      .catch((error) => {
+        battleState.competitiveResolveKey = null;
+        console.warn("경쟁 모드 최초 정답 확정 실패:", error);
+      });
+    return;
+  }
+
+  const players = Object.values(room.players || {});
+  const allPassed = players.length > 0
+    && players.every((player) => Number(player.passedRound ?? -1) === currentIndex);
+  const timedOut = getCompetitiveProblemElapsedMs(room) >= getSpeedrunProblemTimeLimitMs(room);
+  if (!allPassed && !timedOut) return;
+
+  requestCompetitiveAdvance(room, allPassed ? "all-passed" : "timeout");
+}
+
+function showCompetitiveRoundWinner(room) {
+  const noticeKey = `${battleState.firebaseRoomCode}:${room.currentIndex || 0}:${room.roundResolvedAt || 0}`;
+  if (battleState.competitiveNoticeKey !== noticeKey) {
+    clearBattleTimers();
+    battleState.competitiveNoticeKey = noticeKey;
+  }
+  setBattleInputEnabled(false);
+  battlePassButton.disabled = true;
+  game.isSolved = true;
+  const winnerName = room.roundWinner?.name || "최초 정답자";
+  competitionNoticeName.textContent = winnerName;
+  competitionNotice.hidden = false;
+  setFeedback(`${winnerName}님이 가장 먼저 정답을 맞혔습니다.`, "success");
+  updateCompetitiveClockDisplay(room);
+}
+
+function hideCompetitionNotice() {
+  if (competitionNotice) competitionNotice.hidden = true;
+}
+
+function scheduleCompetitiveAdvance(room) {
+  if (!battleState.isHost) return;
+  const currentIndex = Number(room.currentIndex || 0);
+  const resolvedAt = Number(room.roundResolvedAt || getFirebaseNow());
+  const delay = Math.max(0, resolvedAt + 1000 - getFirebaseNow());
+  const advanceKey = `${battleState.firebaseRoomCode}:${currentIndex}:resolved`;
+  if (battleState.competitiveAdvanceKey === advanceKey && battleState.competitiveAdvanceTimerId) return;
+  if (battleState.competitiveAdvanceTimerId) {
+    clearTimeout(battleState.competitiveAdvanceTimerId);
+  }
+  battleState.competitiveAdvanceKey = advanceKey;
+
+  battleState.competitiveAdvanceTimerId = window.setTimeout(async () => {
+    battleState.competitiveAdvanceTimerId = null;
+    const advanced = await requestCompetitiveAdvance(room, "resolved");
+    if (advanced) return;
+
+    battleState.competitiveAdvanceKey = null;
+    const latestRoom = battleState.firebaseRoomSnapshot || {};
+    if (latestRoom.phase === "playing"
+      && latestRoom.roundState === "resolved"
+      && Number(latestRoom.currentIndex || 0) === currentIndex) {
+      window.setTimeout(() => scheduleCompetitiveAdvance(latestRoom), 500);
+    }
+  }, delay);
+}
+
+async function requestCompetitiveAdvance(room, reason) {
+  if (!battleState.isHost || !window.diceFirebase?.advanceCompetitiveRound) return false;
+  const currentIndex = Number(room.currentIndex || 0);
+  const advanceKey = `${battleState.firebaseRoomCode}:${currentIndex}:${reason}`;
+  if (battleState.competitiveAdvanceKey === advanceKey
+    && reason !== "resolved"
+    && battleState.competitiveAdvanceTimerId) return false;
+  battleState.competitiveAdvanceKey = advanceKey;
+
+  try {
+    const result = await window.diceFirebase.advanceCompetitiveRound(battleState.firebaseRoomCode, {
+      roundIndex: currentIndex,
+      reason,
+    });
+    return Boolean(result?.advanced);
+  } catch (error) {
+    battleState.competitiveAdvanceKey = null;
+    console.warn("경쟁 모드 다음 문제 전환 실패:", error);
+    return false;
+  }
+}
+
+async function handleCompetitiveCorrectAnswer(time, expression) {
+  const room = battleState.firebaseRoomSnapshot || {};
+  const currentIndex = Number(room.currentIndex || 0);
+  game.isSolved = true;
+  setBattleInputEnabled(false);
+  battlePassButton.disabled = true;
+  setFeedback("정답 확인 중입니다. 최초 정답 여부를 기다려 주세요.");
+
+  try {
+    const result = await window.diceFirebase.submitCompetitiveSolve(battleState.firebaseRoomCode, {
+      roundIndex: currentIndex,
+      expression,
+      elapsed: time,
+    });
+    setFeedback(
+      result.wonClaim ? "최초 정답 후보로 등록되었습니다." : "다른 참가자가 먼저 정답을 제출했습니다.",
+      result.wonClaim ? "success" : ""
+    );
+  } catch (error) {
+    console.warn("경쟁 모드 정답 제출 실패:", error);
+    game.isSolved = false;
+    setBattleInputEnabled(true);
+    battlePassButton.disabled = false;
+    setFeedback("정답 제출에 실패했습니다. 다시 시도해 주세요.", "error");
+  }
+}
+
+async function handleCompetitivePass() {
+  const room = battleState.firebaseRoomSnapshot || {};
+  const currentIndex = Number(room.currentIndex || 0);
+  game.isSolved = true;
+  setBattleInputEnabled(false);
+  battlePassButton.disabled = true;
+  setFeedback("패스했습니다. 다른 참가자를 기다리는 중입니다.");
+
+  try {
+    await window.diceFirebase.submitCompetitivePass(battleState.firebaseRoomCode, {
+      roundIndex: currentIndex,
+    });
+  } catch (error) {
+    console.warn("경쟁 모드 패스 실패:", error);
+    game.isSolved = false;
+    setBattleInputEnabled(true);
+    battlePassButton.disabled = false;
+    setFeedback("패스 처리에 실패했습니다. 다시 시도해 주세요.", "error");
+  }
+}
+
 function enterSpeedrunFinal(room) {
   clearBattleTimers();
+  hideCompetitionNotice();
   setOnlinePhase("result");
   battleRoundPanel.hidden = true;
   battleResultSummary.hidden = false;
@@ -2138,7 +2513,9 @@ function enterSpeedrunFinal(room) {
   const finalResults = getSpeedrunFinalResults(room);
   battleResultKicker.textContent = "스피드런 결과";
   battleResultTitle.textContent = "최종 순위";
-  battleResultMeta.textContent = `정답 ${SPEEDRUN_TARGET_SOLVES}개 완주자는 시간순, 미완주자는 정답 수순입니다.`;
+  battleResultMeta.textContent = isCompetitiveSpeedrun(room)
+    ? `총 ${getSpeedrunQuestionCount(room)}문제 · 최초 정답 횟수순입니다.`
+    : `정답 ${getSpeedrunQuestionCount(room)}개 완주자는 시간순, 미완주자는 정답 수순입니다.`;
   renderSpeedrunResultList(finalResults);
   showSpeedrunFinalModal(finalResults, room);
   onlineReadyButton.disabled = true;
@@ -2160,12 +2537,15 @@ function normalizeSpeedrunResult(result) {
     solvedCount: Number(result.solvedCount || 0),
     passedCount: Number(result.passedCount || 0),
     finishTime: Number(result.finishTime || 0),
+    lastSolvedAt: Number(result.lastSolvedAt || 0),
     finished: Boolean(result.finished),
     rankLabel: String(result.rankLabel || ""),
   };
 }
 
 function getSpeedrunStandings(players) {
+  const questionCount = getSpeedrunQuestionCount();
+  const competitive = isCompetitiveSpeedrun();
   return [...players]
     .map((player) => ({
       id: String(player.id || ""),
@@ -2173,9 +2553,15 @@ function getSpeedrunStandings(players) {
       solvedCount: Number(player.solvedCount || 0),
       passedCount: Number(player.passedCount || 0),
       finishTime: Number(player.finishTime || 0),
-      finished: Boolean(player.finished || Number(player.solvedCount || 0) >= SPEEDRUN_TARGET_SOLVES),
+      lastSolvedAt: Number(player.lastSolvedAt || 0),
+      finished: Boolean(player.finished || Number(player.solvedCount || 0) >= questionCount),
     }))
     .sort((a, b) => {
+      if (competitive) {
+        if (a.solvedCount !== b.solvedCount) return b.solvedCount - a.solvedCount;
+        if (a.lastSolvedAt !== b.lastSolvedAt) return a.lastSolvedAt - b.lastSolvedAt;
+        return a.name.localeCompare(b.name, "ko");
+      }
       if (a.finished !== b.finished) return a.finished ? -1 : 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
       if (a.solvedCount !== b.solvedCount) return b.solvedCount - a.solvedCount;
@@ -2197,7 +2583,9 @@ function renderSpeedrunResultList(results) {
       const detail = document.createElement("small");
       rank.textContent = `${result.rankLabel || ""}위`;
       name.textContent = result.name;
-      detail.textContent = result.finished
+      detail.textContent = isCompetitiveSpeedrun()
+        ? `최초 정답 ${result.solvedCount}개`
+        : result.finished
         ? `정답 ${result.solvedCount}개 · 완주 ${formatTime(result.finishTime)} · 패스 ${result.passedCount}개`
         : `정답 ${result.solvedCount}개 · 패스 ${result.passedCount}개`;
       item.append(rank, name, detail);
@@ -2210,7 +2598,9 @@ function showSpeedrunFinalModal(results, room) {
   battleFinalModal.hidden = false;
   const winner = results[0];
   battleFinalTitle.textContent = winner ? `${winner.name} 우승!` : "스피드런 종료";
-  battleFinalMessage.textContent = `${formatMinutes(room.timeLimit || battleState.timeLimit)}분 대회가 종료되었습니다.`;
+  battleFinalMessage.textContent = isCompetitiveSpeedrun(room)
+    ? `총 ${getSpeedrunQuestionCount(room)}문제 경쟁이 종료되었습니다.`
+    : `${formatMinutes(room.timeLimit || battleState.timeLimit)}분 대회가 종료되었습니다.`;
   battleFinalList.replaceChildren(
     ...results.map((player) => {
       const row = document.createElement("li");
@@ -2219,7 +2609,9 @@ function showSpeedrunFinalModal(results, room) {
       const score = document.createElement("em");
       rank.textContent = `${player.rankLabel}위`;
       name.textContent = player.name;
-      score.textContent = player.finished
+      score.textContent = isCompetitiveSpeedrun(room)
+        ? `${player.solvedCount}개`
+        : player.finished
         ? `${formatTime(player.finishTime)}`
         : `${player.solvedCount}개`;
       row.append(rank, name, score);
@@ -2704,7 +3096,10 @@ function getBattleRuleNote(mode) {
   if (isSpeedrunMode(mode)) {
     const room = battleState.firebaseRoomSnapshot || {};
     const problemSeconds = Math.round(normalizeTimeLimit(room.problemTimeLimit || selectedSpeedrunProblemTimeLimit) / 1000);
-    return `${formatMinutes(battleState.timeLimit || selectedSpeedrunTimeLimit)}분 스피드런 · 문제당 ${problemSeconds}초 · 정답 ${SPEEDRUN_TARGET_SOLVES}개 목표 · 패스 가능 · 2~${SPEEDRUN_PLAYER_LIMIT}명`;
+    const questionCount = getSpeedrunQuestionCount(room);
+    return isCompetitiveSpeedrun(room)
+      ? `경쟁 스피드런 · 문제당 ${problemSeconds}초 · 총 ${questionCount}문제 · 최초 정답 1점 · 전원 패스 시 다음 문제 · 2~${SPEEDRUN_PLAYER_LIMIT}명`
+      : `${formatMinutes(battleState.timeLimit || selectedSpeedrunTimeLimit)}분 개인 완주 · 문제당 ${problemSeconds}초 · 정답 ${questionCount}개 목표 · 패스 가능 · 2~${SPEEDRUN_PLAYER_LIMIT}명`;
   }
 
   if (mode.includes("자동매칭")) {
@@ -2717,6 +3112,15 @@ function getBattleRuleNote(mode) {
 function isSpeedrunMode(mode = battleState.roomMode) {
   const room = battleState.firebaseRoomSnapshot || {};
   return room.speedrun === true || String(mode || "").includes("스피드런") || String(mode || "").includes("5인 이상");
+}
+
+function isCompetitiveSpeedrun(room = battleState.firebaseRoomSnapshot || {}) {
+  return isSpeedrunMode(room.mode || battleState.roomMode)
+    && normalizeSpeedrunType(room.speedrunType) === SPEEDRUN_TYPE_COMPETITIVE;
+}
+
+function getSpeedrunQuestionCount(room = battleState.firebaseRoomSnapshot || {}) {
+  return normalizeSpeedrunQuestionCount(room.questionCount || room.targetSolves || selectedSpeedrunQuestionCount);
 }
 
 function formatMinutes(ms) {
@@ -2760,17 +3164,21 @@ function clearBattleTimers() {
   if (battleState.roundTimerId) clearInterval(battleState.roundTimerId);
   if (battleState.roundEndTimerId) clearTimeout(battleState.roundEndTimerId);
   if (battleState.countdownTimerId) clearInterval(battleState.countdownTimerId);
+  if (battleState.competitiveAdvanceTimerId) clearTimeout(battleState.competitiveAdvanceTimerId);
   clearAutoStartTimers();
   battleState.statusTimerIds.forEach((timerId) => clearTimeout(timerId));
   battleState.roundTimerId = null;
   battleState.roundClockMode = null;
   battleState.roundEndTimerId = null;
   battleState.countdownTimerId = null;
+  battleState.competitiveAdvanceTimerId = null;
+  battleState.competitiveAdvanceKey = null;
   battleState.statusTimerIds = [];
   battleState.roundStartedAt = null;
   battleState.firebaseSolveStartedAt = null;
   battleState.autoStartPaused = false;
   battleCountdownLayer.hidden = true;
+  hideCompetitionNotice();
   updateHostControlButton();
 }
 
@@ -2855,10 +3263,43 @@ function revealBattleRound() {
 }
 
 function renderBattleStatuses(statusMap = {}) {
+  if (isCompetitiveSpeedrun()) {
+    const room = battleState.firebaseRoomSnapshot || {};
+    const currentIndex = Number(room.currentIndex || 0);
+    const rankedPlayers = [...battleState.players].sort((a, b) => {
+      if (Number(a.solvedCount || 0) !== Number(b.solvedCount || 0)) {
+        return Number(b.solvedCount || 0) - Number(a.solvedCount || 0);
+      }
+      return Number(a.lastSolvedAt || 0) - Number(b.lastSolvedAt || 0);
+    });
+    const leader = rankedPlayers[0];
+    const passCount = battleState.players.filter(
+      (player) => Number(player.passedRound ?? -1) === currentIndex
+    ).length;
+    const createSummaryRow = (label, value) => {
+      const row = document.createElement("div");
+      const name = document.createElement("strong");
+      const score = document.createElement("em");
+      row.className = "party-member";
+      name.textContent = label;
+      score.textContent = value;
+      row.append(name, score);
+      return row;
+    };
+    battleStatusList.replaceChildren(
+      createSummaryRow(
+        "현재 1위",
+        leader ? `${leader.name} · ${Number(leader.solvedCount || 0)}개` : "-"
+      ),
+      createSummaryRow("패스 인원", `${passCount}/${battleState.players.length}`)
+    );
+    return;
+  }
+
   battleStatusList.replaceChildren(
     ...battleState.players.map((player, index) => {
       const status = isSpeedrunMode()
-        ? `${Number(player.solvedCount || 0)}/${SPEEDRUN_TARGET_SOLVES}`
+        ? `${Number(player.solvedCount || 0)}/${getSpeedrunQuestionCount()}`
         : statusMap[player.id] || "풀이중";
       const row = document.createElement("div");
       const avatar = document.createElement("span");
@@ -3101,6 +3542,30 @@ function createMockRoundResults() {
 }
 
 function renderScoreBoard() {
+  if (isCompetitiveSpeedrun()) {
+    const room = battleState.firebaseRoomSnapshot || {};
+    const currentIndex = Number(room.currentIndex || 0);
+    const sortedPlayers = getSpeedrunStandings(battleState.players);
+    const leader = sortedPlayers[0];
+    const passCount = battleState.players.filter(
+      (player) => Number(player.passedRound ?? -1) === currentIndex
+    ).length;
+    const createRow = (label, value) => {
+      const row = document.createElement("div");
+      const name = document.createElement("strong");
+      const score = document.createElement("em");
+      name.textContent = label;
+      score.textContent = value;
+      row.append(name, score);
+      return row;
+    };
+    scoreBoard.replaceChildren(
+      createRow("현재 1위", leader ? `${leader.name} · ${leader.solvedCount}개` : "-"),
+      createRow("패스 인원", `${passCount}/${battleState.players.length}`)
+    );
+    return;
+  }
+
   if (isSpeedrunMode()) {
     const sortedPlayers = getSpeedrunStandings(battleState.players);
     scoreBoard.replaceChildren(
@@ -3221,8 +3686,10 @@ function createSolvableProblem() {
   };
 }
 
-function createSpeedrunProblemSet() {
-  return Array.from({ length: SPEEDRUN_PROBLEM_COUNT }, () => createSolvableProblem());
+function createSpeedrunProblemSet(questionCount = selectedSpeedrunQuestionCount) {
+  const minimumCount = Math.max(getSpeedrunQuestionCount({ questionCount }), DEFAULT_SPEEDRUN_QUESTION_COUNT);
+  const problemCount = Math.max(minimumCount, Math.min(SPEEDRUN_PROBLEM_COUNT, minimumCount * 4));
+  return Array.from({ length: problemCount }, () => createSolvableProblem());
 }
 
 function canSolveWithBasicOps(values, target) {
@@ -3751,7 +4218,9 @@ function checkAnswer() {
   const time = game.mode === "battle"
     ? getBattleElapsedMs()
     : game.mode === "speedrun"
-      ? getSpeedrunElapsedMs()
+      ? isCompetitiveSpeedrun()
+        ? getCompetitiveProblemElapsedMs()
+        : getSpeedrunElapsedMs()
     : stopTimer();
   const expression = stringifyTokens(game.tokens);
   if (game.mode === "speedrun") {
@@ -4054,6 +4523,10 @@ function formatDurationClock(ms) {
 }
 
 function updateBattleElapsed(time) {
+  if (battleState.firebaseRoomCode && isCompetitiveSpeedrun()) {
+    updateCompetitiveClockDisplay();
+    return;
+  }
   if (battleState.firebaseRoomCode && (isSpeedrunMode() || battleState.roundClockMode === "speedrun")) {
     updateSpeedrunClockDisplay();
     return;

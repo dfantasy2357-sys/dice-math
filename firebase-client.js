@@ -26,6 +26,14 @@
     return limit >= 300000 && limit <= 1800000 && limit % 300000 === 0 ? limit : 300000;
   }
 
+  function normalizeSpeedrunType(value) {
+    return value === "competitive" ? "competitive" : "individual";
+  }
+
+  function normalizeSpeedrunQuestionCount(value) {
+    return Number(value) === 10 ? 10 : 5;
+  }
+
   function normalizeSoloTimeLimit(value) {
     return Number(value) === 0 ? 0 : normalizeTimeLimit(value);
   }
@@ -357,10 +365,11 @@
     async createSpeedrunRoom({
       nickname,
       difficulty = "basic",
+      speedrunType = "individual",
       timeLimit = 300000,
       problemTimeLimit = 60000,
       playerLimit = 10,
-      targetSolves = 20,
+      questionCount = 5,
     }) {
       requireDatabase(this);
 
@@ -375,11 +384,13 @@
           code,
           mode: "스피드런 대회방",
           speedrun: true,
+          speedrunType: normalizeSpeedrunType(speedrunType),
           playerCount: Math.min(10, Math.max(2, Number(playerLimit || 10))),
           matchmaking: false,
           difficulty: difficulty === "power" ? "power" : "basic",
           targetScore: 200,
-          targetSolves: Math.min(20, Math.max(1, Number(targetSolves || 20))),
+          questionCount: normalizeSpeedrunQuestionCount(questionCount),
+          targetSolves: normalizeSpeedrunQuestionCount(questionCount),
           timeLimit: normalizeSpeedrunTimeLimit(timeLimit),
           problemTimeLimit: normalizeTimeLimit(problemTimeLimit),
           phase: "lobby",
@@ -397,6 +408,7 @@
               currentIndex: 0,
               finishTime: 0,
               finished: false,
+              passedRound: -1,
               status: "준비 전",
               ready: false,
               isHost: true,
@@ -557,6 +569,8 @@
         currentIndex: players[uid]?.currentIndex || 0,
         finishTime: players[uid]?.finishTime || 0,
         finished: players[uid]?.finished || false,
+        passedRound: Number(players[uid]?.passedRound ?? -1),
+        lastSolvedAt: Number(players[uid]?.lastSolvedAt || 0),
         status: isWaitingForNextRound ? "다음 라운드 대기" : "준비 전",
         ready: false,
         isHost: room.hostUid === uid,
@@ -652,7 +666,12 @@
         updatedAt: now,
       });
     },
-    async startSpeedrun(code, { problemSet, timeLimit = 300000, targetSolves = 20 }) {
+    async startSpeedrun(code, {
+      problemSet,
+      speedrunType = "individual",
+      timeLimit = 300000,
+      questionCount = 5,
+    }) {
       requireDatabase(this);
 
       const normalizedCode = String(code || "").trim().toUpperCase();
@@ -681,14 +700,24 @@
       }
 
       const now = window.firebase.database.ServerValue.TIMESTAMP;
+      const normalizedType = normalizeSpeedrunType(speedrunType || room.speedrunType);
+      const normalizedQuestionCount = normalizeSpeedrunQuestionCount(questionCount || room.questionCount);
       const updates = {
         phase: "playing",
         round: Number(room.round || 0) + 1,
         startedAt: now,
+        speedrunType: normalizedType,
         timeLimit: normalizeSpeedrunTimeLimit(timeLimit),
-        targetSolves: Math.min(20, Math.max(1, Number(targetSolves || 20))),
+        questionCount: normalizedQuestionCount,
+        targetSolves: normalizedQuestionCount,
         problemSet: Array.isArray(problemSet) ? problemSet : [],
         progress: null,
+        currentIndex: normalizedType === "competitive" ? 0 : null,
+        currentProblemStartedAt: normalizedType === "competitive" ? now : null,
+        roundState: normalizedType === "competitive" ? "active" : null,
+        competitiveClaim: null,
+        roundWinner: null,
+        roundResolvedAt: null,
         finalResults: null,
         updatedAt: now,
       };
@@ -702,6 +731,8 @@
         updates[`players/${playerUid}/currentIndex`] = 0;
         updates[`players/${playerUid}/finishTime`] = 0;
         updates[`players/${playerUid}/finished`] = false;
+        updates[`players/${playerUid}/passedRound`] = -1;
+        updates[`players/${playerUid}/lastSolvedAt`] = 0;
         updates[`players/${playerUid}/problemStartedAt`] = now;
         updates[`players/${playerUid}/activeRound`] = Number(room.round || 0) + 1;
         updates[`players/${playerUid}/waitingNextRound`] = false;
@@ -761,7 +792,7 @@
       const normalizedIndex = Math.max(0, Number(problemIndex || player.currentIndex || 0));
       if (normalizedIndex !== Number(player.currentIndex || 0)) return;
 
-      const targetSolves = Math.min(20, Math.max(1, Number(room.targetSolves || 20)));
+      const targetSolves = normalizeSpeedrunQuestionCount(room.questionCount || room.targetSolves);
       const solvedCount = Number(player.solvedCount || 0) + 1;
       const finishTime = solvedCount >= targetSolves ? Math.max(0, Math.round(Number(elapsed || 0))) : 0;
       const updates = {
@@ -810,6 +841,202 @@
       };
 
       await roomRef.update(updates);
+    },
+    async submitCompetitiveSolve(code, { roundIndex, expression, elapsed }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const claimRef = roomRef.child("competitiveClaim");
+      const roomSnapshot = await roomRef.once("value");
+      const room = roomSnapshot.val();
+      const normalizedRound = Math.max(0, Number(roundIndex || 0));
+
+      if (!room
+        || room.phase !== "playing"
+        || normalizeSpeedrunType(room.speedrunType) !== "competitive"
+        || room.roundState !== "active"
+        || Number(room.currentIndex || 0) !== normalizedRound
+        || !room.players?.[uid]) {
+        return { wonClaim: false, claim: room?.competitiveClaim || null };
+      }
+
+      const claim = {
+        uid,
+        name: cleanNickname(room.players[uid].name),
+        roundIndex: normalizedRound,
+        expression: String(expression || "").slice(0, 200),
+        elapsed: Math.max(0, Math.round(Number(elapsed || 0))),
+        submittedAt: this.getServerNow(),
+      };
+      const result = await claimRef.transaction((current) => (current === null ? claim : undefined));
+
+      return {
+        wonClaim: result.committed,
+        claim: result.snapshot.val(),
+      };
+    },
+    async submitCompetitivePass(code, { roundIndex }) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const snapshot = await roomRef.once("value");
+      const room = snapshot.val();
+      const normalizedRound = Math.max(0, Number(roundIndex || 0));
+
+      if (!room
+        || room.phase !== "playing"
+        || normalizeSpeedrunType(room.speedrunType) !== "competitive"
+        || room.roundState !== "active"
+        || Number(room.currentIndex || 0) !== normalizedRound
+        || !room.players?.[uid]
+        || Number(room.players[uid].passedRound ?? -1) === normalizedRound) {
+        return;
+      }
+
+      await roomRef.update({
+        [`players/${uid}/passedRound`]: normalizedRound,
+        [`players/${uid}/passedCount`]: Number(room.players[uid].passedCount || 0) + 1,
+        [`players/${uid}/status`]: "패스",
+        updatedAt: window.firebase.database.ServerValue.TIMESTAMP,
+      });
+    },
+    async resolveCompetitiveClaim(code, roundIndex) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const normalizedRound = Math.max(0, Number(roundIndex || 0));
+
+      const result = await roomRef.transaction((room) => {
+        if (!room
+          || room.hostUid !== uid
+          || room.phase !== "playing"
+          || normalizeSpeedrunType(room.speedrunType) !== "competitive"
+          || room.roundState !== "active"
+          || Number(room.currentIndex || 0) !== normalizedRound) {
+          return room;
+        }
+
+        const claim = room.competitiveClaim;
+        const winner = claim?.uid ? room.players?.[claim.uid] : null;
+        if (!winner || Number(claim.roundIndex || 0) !== normalizedRound) return room;
+
+        const resolvedAt = Date.now();
+        const nextPlayers = { ...(room.players || {}) };
+        nextPlayers[claim.uid] = {
+          ...winner,
+          solvedCount: Number(winner.solvedCount || 0) + 1,
+          status: "최초 정답",
+          lastSolvedAt: resolvedAt,
+        };
+
+        return {
+          ...room,
+          players: nextPlayers,
+          roundState: "resolved",
+          roundWinner: {
+            uid: claim.uid,
+            name: claim.name || winner.name || "플레이어",
+            expression: claim.expression || "",
+            elapsed: Number(claim.elapsed || 0),
+          },
+          roundResolvedAt: resolvedAt,
+          updatedAt: resolvedAt,
+        };
+      });
+    },
+    async advanceCompetitiveRound(code, { roundIndex, reason = "resolved" } = {}) {
+      requireDatabase(this);
+
+      const normalizedCode = String(code || "").trim().toUpperCase();
+      const uid = this.getUid();
+      const roomRef = this.database.ref(`rooms/${normalizedCode}`);
+      const normalizedRound = Math.max(0, Number(roundIndex || 0));
+
+      const result = await roomRef.transaction((room) => {
+        if (!room
+          || room.hostUid !== uid
+          || room.phase !== "playing"
+          || normalizeSpeedrunType(room.speedrunType) !== "competitive"
+          || Number(room.currentIndex || 0) !== normalizedRound) {
+          return room;
+        }
+
+        const canAdvance = room.roundState === "resolved"
+          || (room.roundState === "active" && (reason === "all-passed" || reason === "timeout"));
+        if (!canAdvance) return room;
+
+        const questionCount = normalizeSpeedrunQuestionCount(room.questionCount || room.targetSolves);
+        const nextIndex = normalizedRound + 1;
+        const nextPlayers = {};
+        Object.entries(room.players || {}).forEach(([playerUid, player]) => {
+          nextPlayers[playerUid] = {
+            ...player,
+            status: nextIndex >= questionCount ? "완료" : "도전 중",
+            passedRound: -1,
+          };
+        });
+
+        if (nextIndex >= questionCount) {
+          const finalResults = Object.entries(nextPlayers)
+            .map(([playerUid, player]) => ({
+              id: playerUid,
+              name: String(player.name || "이름 없음"),
+              solvedCount: Number(player.solvedCount || 0),
+              passedCount: Number(player.passedCount || 0),
+              lastSolvedAt: Number(player.lastSolvedAt || 0),
+            }))
+            .sort((a, b) => {
+              if (a.solvedCount !== b.solvedCount) return b.solvedCount - a.solvedCount;
+              if (a.lastSolvedAt !== b.lastSolvedAt) return a.lastSolvedAt - b.lastSolvedAt;
+              return a.name.localeCompare(b.name, "ko");
+            })
+            .map((player, index) => ({ ...player, rankLabel: String(index + 1) }));
+
+          return {
+            ...room,
+            players: nextPlayers,
+            phase: "final",
+            currentIndex: nextIndex,
+            roundState: "finished",
+            competitiveClaim: null,
+            roundWinner: null,
+            finalResults,
+            finalAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        }
+
+        return {
+          ...room,
+          players: nextPlayers,
+          currentIndex: nextIndex,
+          currentProblemStartedAt: Date.now(),
+          roundState: "active",
+          competitiveClaim: null,
+          roundWinner: null,
+          roundResolvedAt: null,
+          updatedAt: Date.now(),
+        };
+      });
+
+      const updatedRoom = result.snapshot.val();
+      return {
+        advanced: Boolean(
+          result.committed
+          && updatedRoom
+          && (
+            updatedRoom.phase === "final"
+            || Number(updatedRoom.currentIndex || 0) > normalizedRound
+          )
+        ),
+        room: updatedRoom,
+      };
     },
     async submitSpeedrunTimeout(code, { elapsed }) {
       requireDatabase(this);
@@ -922,13 +1149,16 @@
       const now = Date.now();
 
       await roomRef.transaction((room) => {
-        if (!room || room.speedrun !== true || room.phase !== "playing") return room;
+        if (!room
+          || room.speedrun !== true
+          || normalizeSpeedrunType(room.speedrunType) !== "individual"
+          || room.phase !== "playing") return room;
         const players = room.players || {};
         const currentPlayer = players[uid] || {};
         const isHost = room.hostUid === uid || currentPlayer.isHost === true;
         if (!isHost) return room;
 
-        const targetSolves = Math.min(20, Math.max(1, Number(room.targetSolves || 20)));
+        const targetSolves = normalizeSpeedrunQuestionCount(room.questionCount || room.targetSolves);
         const finalResults = Object.entries(players)
           .map(([playerUid, player]) => {
             const solvedCount = Number(player.solvedCount || 0);

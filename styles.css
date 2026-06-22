@@ -1076,6 +1076,11 @@ button,
   grid-template-columns: repeat(3, 1fr);
 }
 
+.speedrun-mode-options,
+.speedrun-question-options {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .speedrun-setting-group {
   display: grid;
   gap: 8px;
@@ -1099,6 +1104,32 @@ button,
 .battle-goal-options button.active {
   background: var(--accent);
   color: #fff;
+}
+
+.competition-notice {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  background: rgba(8, 12, 20, 0.96);
+  color: #fff;
+  text-align: center;
+}
+
+.competition-notice[hidden] {
+  display: none;
+}
+
+.competition-notice span {
+  max-width: min(88vw, 420px);
+  overflow-wrap: anywhere;
+  color: #f8fafc;
+  font-size: 44px;
+  font-weight: 950;
+  line-height: 1.05;
+  text-shadow: 0 0 28px rgba(240, 184, 76, 0.7);
 }
 
 .battle-lobby {

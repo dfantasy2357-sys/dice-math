@@ -11,10 +11,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="주사위 연산">
   <title>주사위 연산 앱 모드</title>
-  <link rel="manifest" href="manifest.webmanifest?v=20260617-speedrun-ui1">
+  <link rel="manifest" href="manifest.webmanifest?v=20260622-speedrun-competition2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=20260617-speedrun-ui1">
+  <link rel="stylesheet" href="styles.css?v=20260622-speedrun-competition2">
 </head>
 <body>
   <main class="app-frame theme-basic" id="appFrame">
@@ -229,6 +229,9 @@
               <div class="battle-countdown-layer" id="battleCountdownLayer" hidden>
                 <strong id="battleCountdownNumber">3</strong>
               </div>
+              <div class="competition-notice" id="competitionNotice" hidden>
+                <span id="competitionNoticeName">플레이어</span>
+              </div>
               <div class="battle-problem-card">
                 <button class="pass-button" id="battlePassButton" type="button" hidden>패스</button>
                 <div class="battle-target-dice">
@@ -319,6 +322,13 @@
           <button class="sheet-close" id="speedrunCreateClose" type="button" aria-label="닫기">×</button>
         </header>
         <div class="speedrun-setting-group">
+          <span>진행 방식</span>
+          <div class="battle-goal-options speedrun-mode-options" id="speedrunModeOptions">
+            <button class="active" type="button" data-speedrun-type="individual">개인 완주</button>
+            <button type="button" data-speedrun-type="competitive">경쟁</button>
+          </div>
+        </div>
+        <div class="speedrun-setting-group" id="speedrunTotalTimeGroup">
           <span>전체 제한시간</span>
           <div class="battle-goal-options speedrun-time-options" id="speedrunTimeLimitOptions">
             <button class="active" type="button" data-speedrun-time-limit="300000">5분</button>
@@ -336,7 +346,14 @@
             <button type="button" data-speedrun-problem-time-limit="120000">120초</button>
           </div>
         </div>
-        <p class="join-code-help">정답 20개 먼저 달성하면 완주입니다. 안 풀리는 문제는 패스할 수 있어요.</p>
+        <div class="speedrun-setting-group">
+          <span>총 문항수</span>
+          <div class="battle-goal-options speedrun-question-options" id="speedrunQuestionOptions">
+            <button class="active" type="button" data-speedrun-question-count="5">5문제</button>
+            <button type="button" data-speedrun-question-count="10">10문제</button>
+          </div>
+        </div>
+        <p class="join-code-help" id="speedrunCreateHelp">각자 문제를 풀고 정해진 문항을 먼저 완료하면 완주입니다.</p>
         <button class="sheet-start" id="speedrunCreateSubmit" type="button">스피드런 방 만들기</button>
       </div>
     </section>
@@ -442,7 +459,7 @@
           </div>
           <div>
             <span>버전</span>
-            <strong id="settingsVersion">20260617-speedrun-ui1</strong>
+            <strong id="settingsVersion">20260622-speedrun-competition2</strong>
           </div>
         </div>
 
@@ -630,8 +647,8 @@
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-database-compat.js"></script>
-  <script src="firebase-config.js?v=20260617-speedrun-ui1"></script>
-  <script src="firebase-client.js?v=20260617-speedrun-ui1"></script>
-  <script src="app.js?v=20260617-speedrun-ui1"></script>
+  <script src="firebase-config.js?v=20260622-speedrun-competition2"></script>
+  <script src="firebase-client.js?v=20260622-speedrun-competition2"></script>
+  <script src="app.js?v=20260622-speedrun-competition2"></script>
 </body>
 </html>
